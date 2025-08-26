@@ -1,0 +1,470 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glassy Social – Reactless Single-Page (Firebase)</title>  <!-- Tailwind (CDN) -->  <script src="https://cdn.tailwindcss.com"></script>  <script>
+    // Tailwind custom theme: FB blue + Spotify green accents
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            fb: {
+              blue: '#1877F2'
+            },
+            spotify: {
+              green: '#1DB954'
+            }
+          },
+          boxShadow: {
+            glass: '0 8px 32px 0 rgba(31, 38, 135, 0.37)'
+          },
+          backdropBlur: {
+            xs: '2px'
+          }
+        }
+      }
+    }
+  </script>  <style>
+    /* Glassmorphism background */
+    body {
+      background: radial-gradient(1200px 800px at 20% 0%, #0d0f12 10%, #0b0b0b 60%, #090909 100%);
+      color: #f3f4f6;
+    }
+    .glass {
+      background: rgba(18,18,18,0.55);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.25);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 1rem;
+    }
+    .btn {
+      @apply px-3 py-2 rounded-2xl font-medium transition;
+    }
+    .btn-primary { @apply bg-fb-blue hover:opacity-90; }
+    .btn-ghost { @apply hover:bg-white/10; }
+    .chip { @apply text-xs px-2 py-1 rounded-full bg-white/10; }
+    a { color: #93c5fd; }
+  </style>  <!-- Icons -->  <script src="https://unpkg.com/lucide@latest"></script>  <!-- Day.js for relative time -->  <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>  <script src="https://unpkg.com/dayjs@1.11.10/plugin/relativeTime.js"></script>  <script>
+    dayjs.extend(window.dayjs_plugin_relativeTime);
+  </script>  <!-- Firebase (CDN, Modular v10+) -->  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { 
+      getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
+      signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import {
+      getFirestore, collection, doc, setDoc, getDoc, addDoc, query, orderBy,
+      onSnapshot, serverTimestamp, updateDoc, arrayUnion, arrayRemove,
+      where, getDocs
+    } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    // ===== 1) CONFIG =====
+    // TODO: Replace with your own Firebase config
+    // 🔑 Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyAatiY08DpbdqK6pAE53OWkQOJZJYTZbdI",
+  authDomain: "social-app-f4758.firebaseapp.com",
+  projectId: "social-app-f4758",
+  storageBucket: "social-app-f4758.firebasestorage.app",
+  messagingSenderId: "381586413963",
+  appId: "1:381586413963:web:2cead65d0b849aa277378e"
+};
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ===== 2) APP STATE =====
+    const state = {
+      user: null,              // Firebase user object
+      postsUnsub: null,        // feed listener
+      route: '#/feed',         // simple hash router
+      posts: [],
+      profileUser: null,       // user whose profile we are viewing
+    };
+
+    const EMOJIS = ['👍','❤','😂','😮','😢','😡','😎','🌸','🚀','🔥'];
+
+    // ===== 3) UTIL =====
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+    const uid = () => state.user?.uid;
+    const relTime = (ts) => ts?.seconds ? dayjs.unix(ts.seconds).fromNow() : 'just now';
+
+    function navigate(hash){
+      window.location.hash = hash;
+    }
+
+    function getHash(){
+      return window.location.hash || '#/feed';
+    }
+
+    function parseRoute(){
+      const h = getHash();
+      state.route = h;
+      // profile route like #/profile/UID
+      if(h.startsWith('#/profile/')){
+        const pid = h.split('/')[2];
+        loadProfile(pid);
+      }
+      render();
+    }
+
+    window.addEventListener('hashchange', parseRoute);
+
+    // ===== 4) AUTH LISTENER =====
+    onAuthStateChanged(auth, async (user)=>{
+      state.user = user;
+      if(user){
+        // Ensure user doc exists
+        const uRef = doc(db, 'users', user.uid);
+        const snap = await getDoc(uRef);
+        if(!snap.exists()){
+          await setDoc(uRef, {
+            uid: user.uid,
+            name: user.displayName || user.email.split('@')[0],
+            photoURL: user.photoURL || 'https://ui-avatars.com/api/?background=1DB954&color=fff&name=' + encodeURIComponent(user.email[0]||'U'),
+            bio: 'New here ✨',
+            following: [],
+            createdAt: serverTimestamp()
+          });
+        }
+        subscribeFeed();
+        if(state.route === '#/login') navigate('#/feed');
+      } else {
+        unsubscribeFeed();
+        navigate('#/login');
+      }
+      render();
+    });
+
+    // ===== 5) DATA LAYERS =====
+    function subscribeFeed(){
+      unsubscribeFeed();
+      const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+      state.postsUnsub = onSnapshot(q, (snap)=>{
+        state.posts = snap.docs.map(d=>({ id: d.id, ...d.data() }));
+        render();
+      });
+    }
+    function unsubscribeFeed(){
+      if(state.postsUnsub){ state.postsUnsub(); state.postsUnsub=null; }
+    }
+
+    async function loadProfile(userId){
+      const ref = doc(db, 'users', userId);
+      const s = await getDoc(ref);
+      state.profileUser = s.exists()? s.data() : null;
+    }
+
+    // Create a post
+    async function createPost({text, imageUrl}){
+      if(!uid()) return;
+      const authorRef = doc(db, 'users', uid());
+      const authorSnap = await getDoc(authorRef);
+      const author = authorSnap.data();
+      await addDoc(collection(db, 'posts'), {
+        authorId: uid(),
+        authorName: author?.name || 'User',
+        authorPhoto: author?.photoURL,
+        text: text?.trim() || '',
+        imageUrl: imageUrl?.trim() || '',
+        reactions: {}, // emoji -> [uids]
+        commentsCount: 0,
+        createdAt: serverTimestamp()
+      });
+    }
+
+    // Toggle reaction
+    async function toggleReaction(postId, emoji){
+      if(!uid()) return;
+      const ref = doc(db, 'posts', postId);
+      const snap = await getDoc(ref);
+      if(!snap.exists()) return;
+      const data = snap.data();
+      const current = data.reactions?.[emoji] || [];
+      const has = current.includes(uid());
+      const newMap = { ...(data.reactions||{}) };
+      if(has){
+        newMap[emoji] = current.filter(x=>x!==uid());
+      } else {
+        newMap[emoji] = [...current, uid()];
+      }
+      await updateDoc(ref, { reactions: newMap });
+    }
+
+    // Add comment (stored in subcollection)
+    async function addComment(postId, text){
+      if(!uid()) return;
+      const t = text.trim(); if(!t) return;
+      const userRef = doc(db, 'users', uid());
+      const u = (await getDoc(userRef)).data();
+      const cRef = collection(db, 'posts', postId, 'comments');
+      await addDoc(cRef, {
+        uid: uid(),
+        name: u?.name || 'User',
+        photoURL: u?.photoURL,
+        text: t,
+        createdAt: serverTimestamp()
+      });
+      await updateDoc(doc(db, 'posts', postId), { commentsCount: ( (await getDoc(doc(db,'posts',postId))).data().commentsCount || 0) + 1 });
+    }
+
+    // Follow / Unfollow
+    async function toggleFollow(targetUid){
+      if(!uid() || uid()===targetUid) return;
+      const meRef = doc(db, 'users', uid());
+      const me = (await getDoc(meRef)).data();
+      const following = me.following || [];
+      const isFollowing = following.includes(targetUid);
+      await updateDoc(meRef, {
+        following: isFollowing ? following.filter(x=>x!==targetUid) : [...following, targetUid]
+      });
+      render();
+    }
+
+    // ===== 6) UI =====
+    function icon(name, cls='w-5 h-5'){ return <i data-lucide="${name}" class="${cls}"></i>; }
+
+    function Navbar(){
+      const u = state.user;
+      return `
+      <header class="sticky top-0 z-30 glass mx-auto max-w-6xl mt-4 mb-4 px-4 py-3 flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-spotify-green/90 grid place-items-center text-black font-extrabold">GS</div>
+          <span class="font-semibold">Glassy Social</span>
+        </div>
+        <div class="ml-4 flex-1">
+          <input id="search" placeholder="Search people & posts" class="w-full glass px-4 py-2 rounded-xl outline-none" />
+        </div>
+        <nav class="flex items-center gap-2">
+          <button class="btn btn-ghost" onclick="location.hash='#/feed'">${icon('layout-dashboard')}<span class="ml-2 hidden sm:inline">Feed</span></button>
+          ${u? <button class="btn btn-ghost" onclick="location.hash='#/profile/${u.uid}'">${icon('user')}<span class="ml-2 hidden sm:inline">Profile</span></button>:''}
+          ${u? <button id="logoutBtn" class="btn bg-fb-blue">Logout</button> : <button id="loginBtn" class="btn bg-spotify-green text-black font-semibold">Login</button>}
+        </nav>
+      </header>`;
+    }
+
+    function PostComposer(){
+      if(!state.user) return '';
+      return `
+        <div class="glass p-4 mb-4">
+          <div class="flex gap-3 items-start">
+            <img src="${state.user.photoURL || 'https://i.pravatar.cc/60'}" class="w-10 h-10 rounded-full"/>
+            <div class="flex-1">
+              <textarea id="postText" rows="2" placeholder="What's on your mind?" class="w-full glass p-3 rounded-xl"></textarea><div class="mt-2 flex gap-2">
+            <input id="postImg" placeholder="Optional image URL" class="flex-1 glass px-3 py-2 rounded-xl" />
+            <button id="postBtn" class="btn bg-spotify-green text-black">Share ${icon('send','w-4 h-4 ml-1')}</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function ReactionBar(p){
+  const counts = EMOJIS.map(e=>({ e, n: (p.reactions?.[e]||[]).length, mine: (p.reactions?.[e]||[]).includes(uid()) }));
+  return `
+    <div class="flex flex-wrap gap-2 mt-3">
+      ${counts.map(c=>`
+        <button class="chip ${c.mine? 'ring-2 ring-spotify-green' : ''}" data-emoji="${c.e}" data-post="${p.id}">${c.e} ${c.n||''}</button>
+      `).join('')}
+    </div>`;
+}
+
+function CommentBox(p){
+  return `
+    <div class="mt-3">
+      <div class="text-sm opacity-70">${p.commentsCount||0} comments</div>
+      ${state.user ? `
+        <div class="flex gap-2 mt-2">
+          <input data-cpost="${p.id}" class="flex-1 glass px-3 py-2 rounded-xl" placeholder="Write a comment..."/>
+          <button class="btn btn-ghost" data-csend="${p.id}">${icon('message-circle','w-5 h-5')}</button>
+        </div>
+      ` : '<div class="text-sm opacity-70 mt-2">Login to comment</div>'}
+    </div>`;
+}
+
+function PostCard(p){
+  return `
+    <article class="glass p-4 mb-4">
+      <div class="flex items-center gap-3">
+        <img src="${p.authorPhoto || 'https://i.pravatar.cc/60'}" class="w-10 h-10 rounded-full"/>
+        <div>
+          <div class="font-semibold hover:underline cursor-pointer" onclick="location.hash='#/profile/${p.authorId}'">${p.authorName||'User'}</div>
+          <div class="text-xs opacity-70">${relTime(p.createdAt)}</div>
+        </div>
+      </div>
+      <div class="mt-3 whitespace-pre-wrap">${escapeHtml(p.text||'')}</div>
+      ${p.imageUrl? <img src="${p.imageUrl}" class="mt-3 w-full rounded-xl max-h-[460px] object-cover"/> : ''}
+      ${ReactionBar(p)}
+      ${CommentBox(p)}
+    </article>`;
+}
+
+function Feed(){
+  return `
+    <main class="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)_300px] gap-4 px-4 pb-24">
+      <aside class="hidden md:block glass p-4 h-max sticky top-[88px]">
+        <div class="font-semibold mb-3">Menu</div>
+        <ul class="space-y-2 text-sm">
+          <li><a href="#/feed" class="hover:underline">Home / Feed</a></li>
+          ${state.user? <li><a href="#/profile/${uid()}" class="hover:underline">My Profile</a></li>: ''}
+          <li><a href="#/about" class="hover:underline">About</a></li>
+        </ul>
+      </aside>
+      <section>
+        ${PostComposer()}
+        ${state.posts.length? state.posts.map(PostCard).join('') : `
+          <div class="glass p-8 text-center">No posts yet. Be the first to share something! 🎉</div>
+        `}
+      </section>
+      <aside class="hidden lg:block glass p-4 h-max sticky top-[88px]">
+        <div class="font-semibold mb-3">Suggestions</div>
+        <div class="text-sm opacity-70">(Optional) Show people to follow here.</div>
+      </aside>
+    </main>`;
+}
+
+function Login(){
+  return `
+    <main class="mx-auto max-w-md px-4">
+      <div class="glass p-6 mt-10">
+        <h1 class="text-xl font-semibold mb-4">Welcome to Glassy Social</h1>
+        <button id="googleBtn" class="w-full btn bg-spotify-green text-black mb-3">Continue with Google</button>
+        <div class="text-center text-sm opacity-70 my-2">or</div>
+        <input id="lemail" class="w-full glass px-3 py-2 rounded-xl mb-2" placeholder="Email"/>
+        <input id="lpass" type="password" class="w-full glass px-3 py-2 rounded-xl mb-4" placeholder="Password"/>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="emailLogin" class="btn bg-fb-blue">Login</button>
+          <button id="emailSignup" class="btn bg-white/10">Sign up</button>
+        </div>
+      </div>
+    </main>`;
+}
+
+function Profile(){
+  const u = state.profileUser;
+  if(!u) return <main class='mx-auto max-w-3xl px-4'><div class='glass p-6 mt-6'>User not found.</div></main>;
+  const my = uid()===u.uid;
+  const myFollowBtn = (uid() && uid()!==u.uid) ? <button class="btn bg-spotify-green text-black" id="followBtn" data-tuid="${u.uid}">${isFollowing(u.uid)?'Unfollow':'Follow'}</button>:'';
+  const posts = state.posts.filter(p=>p.authorId===u.uid);
+  return `
+    <main class="mx-auto max-w-5xl px-4 pb-24">
+      <div class="glass p-6 mt-6">
+        <div class="flex gap-4 items-center">
+          <img src="${u.photoURL}" class="w-20 h-20 rounded-full"/>
+          <div class="flex-1">
+            <div class="text-2xl font-semibold">${u.name}</div>
+            <div class="opacity-70 text-sm">Joined ${relTime(u.createdAt)}</div>
+          </div>
+          ${my? '' : myFollowBtn}
+        </div>
+        <p class="mt-3">${escapeHtml(u.bio||'')}</p>
+      </div>
+      <div class="mt-6">
+        <h2 class="mb-3 font-semibold">Posts</h2>
+        ${posts.length? posts.map(PostCard).join('') : <div class="glass p-6">No posts yet.</div>}
+      </div>
+    </main>`;
+}
+
+function isFollowing(targetUid){
+  // NOTE: This is a sync read from cached state (could be stale until next render)
+  const me = state.userCache; // not used; keeping simple
+  return false; // We'll compute from Firestore on follow click
+}
+
+// ===== 7) RENDER & EVENTS =====
+function render(){
+  const app = document.getElementById('app');
+  const h = `
+    ${Navbar()}
+    ${state.user ? (state.route.startsWith('#/profile/') ? Profile() : Feed()) : Login()}
+  `;
+  app.innerHTML = h;
+  lucide.createIcons();
+  bindEvents();
+}
+
+async function bindEvents(){
+  // Login events
+  const googleBtn = $('#googleBtn');
+  if(googleBtn){
+    googleBtn.onclick = async ()=>{
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    }
+  }
+  const emailLogin = $('#emailLogin');
+  const emailSignup = $('#emailSignup');
+  if(emailLogin){
+    emailLogin.onclick = async ()=>{
+      const em = $('#lemail').value.trim();
+      const pw = $('#lpass').value;
+      await signInWithEmailAndPassword(auth, em, pw);
+    }
+  }
+  if(emailSignup){
+    emailSignup.onclick = async ()=>{
+      const em = $('#lemail').value.trim();
+      const pw = $('#lpass').value;
+      const cred = await createUserWithEmailAndPassword(auth, em, pw);
+      await updateProfile(cred.user, { displayName: em.split('@')[0] });
+    }
+  }
+  const logoutBtn = $('#logoutBtn');
+  if(logoutBtn) logoutBtn.onclick = ()=>signOut(auth);
+
+  // Post composer
+  const postBtn = $('#postBtn');
+  if(postBtn){
+    postBtn.onclick = async ()=>{
+      const text = $('#postText').value;
+      const img = $('#postImg').value;
+      await createPost({text, imageUrl: img});
+      $('#postText').value='';
+      $('#postImg').value='';
+    }
+  }
+
+  // Reaction chips
+  $$('button[data-emoji]').forEach(btn=>{
+    btn.onclick = ()=> toggleReaction(btn.dataset.post, btn.dataset.emoji);
+  });
+
+  // Comment send
+  $$('button[data-csend]').forEach(b=>{
+    b.onclick = ()=>{
+      const pid = b.dataset.csend;
+      const input = document.querySelector(input[data-cpost="${pid}"]);
+      if(input){ addComment(pid, input.value); input.value=''; }
+    };
+  });
+
+  // Follow button (profile)
+  const followBtn = $('#followBtn');
+  if(followBtn){
+    followBtn.onclick = ()=> toggleFollow(followBtn.dataset.tuid);
+  }
+}
+
+// Helpers
+function escapeHtml(str){
+  return (str||'').replace(/[&<>'"]/g, (c)=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','\'':'&#39;','"':'&quot;'
+  })[c]);
+}
+
+// Kickstart
+parseRoute();
+
+  </script>
+</head>
+<body>
+  <div id="app" class="min-h-screen"></div>  <footer class="text-center text-xs opacity-60 py-10">
+    Built with <span class="text-spotify-green">♥</span> – Glassy Social Demo (Firebase + No Storage)
+  </footer>
+</body>
+</html>
