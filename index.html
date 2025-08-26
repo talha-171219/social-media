@@ -732,6 +732,17 @@ textarea.glass {
           window.setReply(id, content);
         }
       });
+        // Chat send button (delegated)
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (t && t.id === 'send-btn') {
+    const inp = document.getElementById('chat-input');
+    const msg = inp.value.trim();
+    if (!msg) return;
+    sendChat(msg);
+    inp.value = '';
+  }
+});
 
       // Delegated navigation when clicking elements with data-nav inside posts (author name, sidebar links)
       document.addEventListener('click', (e) => {
@@ -741,7 +752,8 @@ textarea.glass {
           if(h){ navigate(h); }
         }
       });
-    }
+    } 
+    
       // ===== CHAT: Press Enter to send =====
 document.addEventListener('keydown', e => {
   const active = document.activeElement;
