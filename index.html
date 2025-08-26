@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Glassy Social — Feed + Chat</title>
 
-  <!-- Tailwind CDN (dev ok) -->
+  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -46,6 +46,9 @@
     .message-form { display:flex; gap:10px; padding:12px; border-top:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
     .message-form input { flex:1; padding:12px 14px; border-radius:999px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:inherit; }
 
+    .react-btn { padding: 6px 10px; border-radius:9999px; background:rgba(255,255,255,.06); }
+    .react-btn.active { outline: 2px solid rgba(255,255,255,.25); }
+
     /* Responsive */
     @media (max-width:900px){ .chat-left{ display:none; } .chat-shell{ flex-direction:column; } .chat-main{ max-height:60vh; } }
   </style>
@@ -60,16 +63,18 @@
   <footer class="text-center py-6">Built with <span style="color:#1DB954">♥</span> — Glassy Social + Chat</footer>
 
   <script type="module">
+    // =========================
     // Firebase v12.1.0 imports
+    // =========================
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
     import {
       getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile
     } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
     import {
-      getFirestore, collection, doc, setDoc, getDoc, addDoc, query, orderBy, onSnapshot, serverTimestamp, updateDoc
+      getFirestore, collection, doc, setDoc, getDoc, addDoc, query, orderBy, onSnapshot, serverTimestamp, updateDoc, deleteDoc
     } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-    // ===== CONFIG: use your project config (storageBucket uses .appspot.com) =====
+    // ===== CONFIG: use your project config =====
     const firebaseConfig = {
       apiKey: "AIzaSyAatiY08DpbdqK6pAE53OWkQOJZJYTZbdI",
       authDomain: "social-app-f4758.firebaseapp.com",
@@ -86,11 +91,20 @@
     const DEFAULT_AVATAR = "https://i.pravatar.cc/150?img=12";
 
     // ===== STATE =====
-    const state = { user: null, posts: [], postsUnsub: null, chatMsgs: [], chatUnsub: null, usersUnsub: null, route: '#/feed', profileUser: null };
+    const state = {
+      user: null,
+      posts: [],
+      postExtras: {}, // {postId: {reactions: {emoji:count}, myReaction:'❤️', comments:[...]}}
+      postsUnsub: null,
+      chatMsgs: [],
+      chatUnsub: null,
+      usersUnsub: null,
+      route: '#/feed',
+      profileUser: null
+    };
 
     // Utils
     const $ = s => document.querySelector(s);
-    const $$ = s => Array.from(document.querySelectorAll(s));
     const uid = () => state.user?.uid;
     const rel = (ts) => ts?.seconds ? dayjs.unix(ts.seconds).fromNow() : 'just now';
     const escapeHtml = (str) => (str||'').replace(/[&<>'"]/g, (c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','\'':'&#39;','"':'&quot;'}[c]));
@@ -99,21 +113,32 @@
     // Routing
     function navigate(h){ window.location.hash = h; }
     function getHash(){ return window.location.hash || '#/feed'; }
-    function parseRoute(){
-      const h = getHash(); state.route = h;
-      if(h.startsWith('#/profile/')){ const pid = h.split('/')[2]; loadProfile(pid).then(()=>render()); }
-      else render();
+    async function parseRoute(){
+      const h = getHash();
+      // guard: profile/chat require auth
+      if((h === '#/chat' || h.startsWith('#/profile/')) && !state.user){
+        navigate('#/login'); render(); return;
+      }
+      state.route = h;
+      if(h.startsWith('#/profile/')){
+        const pid = h.split('/')[2];
+        // needs auth per rules
+        if(!state.user){ navigate('#/login'); render(); return; }
+        await loadProfile(pid);
+      }
+      render();
     }
     window.addEventListener('hashchange', parseRoute);
 
     // ===== AUTH =====
     onAuthStateChanged(auth, async (user)=>{
-      state.user = user;
+      state.user = user || null;
+
       if(user){
-        // ensure user doc exists
+        // ensure user doc exists / update
         const uRef = doc(db,'users',user.uid);
-        const uSnap = await getDoc(uRef);
-        if(!uSnap.exists()){
+        const uSnap = await getDoc(uRef).catch(()=>null);
+        if(!uSnap || !uSnap.exists()){
           await setDoc(uRef, {
             uid: user.uid,
             name: user.displayName || (user.email ? user.email.split('@')[0] : 'User'),
@@ -123,11 +148,14 @@
             createdAt: serverTimestamp()
           });
         } else {
-          // update lastActive / avatar
-          await updateDoc(uRef, { name: user.displayName || uSnap.data().name, avatar: user.photoURL || uSnap.data().avatar, lastActive: serverTimestamp() }).catch(()=>{});
+          await updateDoc(uRef, {
+            name: user.displayName || uSnap.data().name,
+            avatar: user.photoURL || uSnap.data().avatar,
+            lastActive: serverTimestamp()
+          }).catch(()=>{});
         }
+
         subscribePosts();
-        // if user on chat route, start chat listeners
         if(state.route === '#/chat') startChatListeners();
         if(state.route === '#/login') navigate('#/feed');
       } else {
@@ -141,13 +169,51 @@
     // ===== POSTS (feed) =====
     function subscribePosts(){
       if(state.postsUnsub) state.postsUnsub();
-      const q = query(collection(db,'posts'), orderBy('createdAt','desc'));
-      state.postsUnsub = onSnapshot(q, snap => {
+      const qy = query(collection(db,'posts'), orderBy('createdAt','desc'));
+      state.postsUnsub = onSnapshot(qy, async snap => {
         state.posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // attach sub-listeners for reactions/comments (lightweight per post)
+        for(const p of state.posts){
+          ensurePostExtrasListeners(p.id);
+        }
         if(state.route === '#/feed' || state.route.startsWith('#/profile/')) render();
+      }, err => {
+        console.error('posts listener error', err);
       });
     }
     function unsubscribePosts(){ if(state.postsUnsub){ state.postsUnsub(); state.postsUnsub = null; } }
+
+    // Keep listeners map to avoid duplicates
+    const postReactionsUnsub = {};
+    const postCommentsUnsub = {};
+
+    function ensurePostExtrasListeners(postId){
+      if(!postReactionsUnsub[postId]){
+        const rq = collection(db,'posts',postId,'reactions');
+        postReactionsUnsub[postId] = onSnapshot(rq, snap => {
+          const reactions = {};
+          let myReaction = null;
+          snap.forEach(docu=>{
+            const r = docu.data();
+            reactions[r.type] = (reactions[r.type]||0)+1;
+            if(uid() && docu.id === uid()) myReaction = r.type;
+          });
+          state.postExtras[postId] = state.postExtras[postId] || {};
+          state.postExtras[postId].reactions = reactions;
+          state.postExtras[postId].myReaction = myReaction;
+          if(state.route === '#/feed' || state.route.startsWith('#/profile/')) render();
+        }, err=>{ /* ignore if rules missing */ });
+      }
+      if(!postCommentsUnsub[postId]){
+        const cq = query(collection(db,'posts',postId,'comments'), orderBy('createdAt','asc'));
+        postCommentsUnsub[postId] = onSnapshot(cq, snap => {
+          const comments = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+          state.postExtras[postId] = state.postExtras[postId] || {};
+          state.postExtras[postId].comments = comments;
+          if(state.route === '#/feed' || state.route.startsWith('#/profile/')) render();
+        }, err=>{ /* ignore if rules missing */ });
+      }
+    }
 
     async function createPost({ text, imageUrl }){
       if(!uid()) return;
@@ -157,7 +223,7 @@
       await addDoc(collection(db,'posts'), {
         authorId: uid(),
         authorName: author?.name || 'User',
-        authorPhoto: author?.avatar,
+        authorPhoto: author?.avatar || DEFAULT_AVATAR,
         text: (text||'').trim(),
         imageUrl: (imageUrl||'').trim(),
         commentsCount: 0,
@@ -165,20 +231,66 @@
       });
     }
 
+    async function toggleReaction(postId, type){
+      if(!uid()) return alert('Login required');
+      // we store one doc per user under posts/{id}/reactions/{uid}
+      const rref = doc(db,'posts',postId,'reactions', uid());
+      const my = state.postExtras[postId]?.myReaction || null;
+      if(my && my === type){
+        await deleteDoc(rref).catch(()=>{});
+      } else {
+        await setDoc(rref, { type, userId: uid(), createdAt: serverTimestamp() });
+      }
+    }
+
+    async function addComment(postId, content){
+      if(!uid()) return alert('Login required');
+      const c = (content||'').trim();
+      if(!c) return;
+      const author = state.user;
+      await addDoc(collection(db,'posts',postId,'comments'), {
+        authorId: uid(),
+        authorName: author.displayName || author.email?.split('@')[0] || 'User',
+        authorPhoto: author.photoURL || DEFAULT_AVATAR,
+        content: c,
+        createdAt: serverTimestamp()
+      });
+    }
+
     // ===== CHAT =====
     let replyTo = null;
     function startChatListeners(){
-      stopChatListeners();
+      stopChatListeners(); // idempotent
+      if(!uid()) return;
+
       // messages
       const mq = query(collection(db,'chats','general-chat','messages'), orderBy('timestamp','asc'));
       state.chatUnsub = onSnapshot(mq, snap => {
         state.chatMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         if(state.route === '#/chat') render();
-      });
-      // participants
+        // auto-scroll
+        const box = $('#messages'); if(box) box.scrollTop = box.scrollHeight;
+      }, err=>{ console.error('chat listener error', err); });
+
+      // participants (moved here from render to avoid multiple listeners)
       state.usersUnsub = onSnapshot(collection(db,'users'), snap => {
-        if(state.route === '#/chat') render();
-      });
+        // we don't store; we render directly when needed
+        const panel = $('#participantsPanel');
+        if(panel){
+          const me = auth.currentUser?.uid;
+          const html = snap.docs.map(d => {
+            const u = d.data();
+            return `<div class="participant ${u.uid===me?'current-user':''}">
+              <img src="${u.avatar || DEFAULT_AVATAR}" />
+              <div>
+                <div class="font-medium text-sm">${escapeHtml(u.name || 'User')} ${u.uid===me?'<span class="text-xs opacity-70">(You)</span>':''}</div>
+                <div class="text-xs opacity-60">${u.lastActive ? rel(u.lastActive) : ''}</div>
+              </div>
+            </div>`;
+          }).join('');
+          panel.innerHTML = html;
+        }
+      }, err=>{ console.error('users listener error', err); });
     }
     function stopChatListeners(){
       if(state.chatUnsub){ state.chatUnsub(); state.chatUnsub = null; }
@@ -198,7 +310,11 @@
       });
       replyTo = null;
     }
-    window.setReply = (id, content) => { replyTo = { id, content }; const inp = $('#chatInput'); if(inp) inp.value = 'Reply: ' + content + ' '; inp?.focus(); };
+    window.setReply = (id, content) => {
+      replyTo = { id, content };
+      const inp = $('#chatInput');
+      if(inp){ inp.value = 'Reply: ' + content + ' '; inp.focus(); }
+    };
 
     // ===== UI pieces =====
     function Navbar(){
@@ -217,6 +333,49 @@
             <button class="btn" onclick="navigate('#/chat')">Chat</button>
             ${ u ? `<button class="btn" onclick="navigate('#/profile/${u.uid}')">Profile</button><button id="logoutBtn" class="btn btn-primary">Logout</button>` : `<button class="btn" onclick="navigate('#/login')">Login</button>` }
           </div>
+        </div>
+      `;
+    }
+
+    function ReactionBar(p){
+      const extras = state.postExtras[p.id] || {};
+      const counts = extras.reactions || {};
+      const my = extras.myReaction || null;
+      const EMOJIS = ['👍','❤️','😂','😮','😢'];
+      const buttons = EMOJIS.map(e => `
+        <button class="react-btn ${my===e?'active':''}" onclick="toggleReaction('${p.id}','${e}')">${e} <span class="opacity-70 text-sm">${counts[e]||''}</span></button>
+      `).join(' ');
+      const total = Object.values(counts).reduce((a,b)=>a+b,0);
+      return `
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          ${buttons}
+          <span class="text-xs opacity-70 ml-1">${total? total+' reactions':''}</span>
+        </div>
+      `;
+    }
+
+    function CommentsBlock(p){
+      const extras = state.postExtras[p.id] || {};
+      const comments = extras.comments || [];
+      const list = comments.length ? comments.map(c => `
+        <div class="flex gap-3 items-start py-2">
+          <img src="${c.authorPhoto || DEFAULT_AVATAR}" class="w-8 h-8 rounded-full"/>
+          <div class="flex-1">
+            <div class="text-sm font-medium">${escapeHtml(c.authorName||'User')}</div>
+            <div class="text-sm opacity-90">${escapeHtml(c.content||'')}</div>
+            <div class="text-xs opacity-60 mt-1">${rel(c.createdAt)}</div>
+          </div>
+        </div>
+      `).join('') : `<div class="text-sm opacity-60">No comments yet.</div>`;
+      return `
+        <div class="mt-3 border-t border-white/10 pt-3">
+          <div>${list}</div>
+          <form onsubmit="event.preventDefault(); (async()=>{ const i=document.getElementById('c_${p.id}'); if(i){ await addComment('${p.id}', i.value); i.value=''; } })();">
+            <div class="flex gap-2 mt-2">
+              <input id="c_${p.id}" class="flex-1 glass px-3 py-2 rounded-xl" placeholder="${ state.user ? 'Write a comment...' : 'Login to comment' }" ${ state.user ? '' : 'disabled' } />
+              <button class="btn btn-primary" ${ state.user ? '' : 'disabled' }>Comment</button>
+            </div>
+          </form>
         </div>
       `;
     }
@@ -246,12 +405,14 @@
           <div class="flex items-center gap-3">
             <img src="${p.authorPhoto || DEFAULT_AVATAR}" class="w-10 h-10 rounded-full"/>
             <div>
-              <div class="font-semibold hover:underline cursor-pointer" onclick="navigate('#/profile/${p.authorId}')">${p.authorName||'User'}</div>
+              <div class="font-semibold hover:underline cursor-pointer" onclick="navigate('#/profile/${p.authorId}')">${escapeHtml(p.authorName||'User')}</div>
               <div class="text-xs opacity-70">${rel(p.createdAt)}</div>
             </div>
           </div>
           <div class="mt-3 whitespace-pre-wrap">${escapeHtml(p.text||'')}</div>
           ${imgHtml}
+          ${ReactionBar(p)}
+          ${CommentsBlock(p)}
         </article>
       `;
     }
@@ -292,7 +453,7 @@
             <input id="lpass" type="password" class="w-full glass px-3 py-2 rounded-xl mb-4" placeholder="Password"/>
             <div class="grid grid-cols-2 gap-2">
               <button id="emailLogin" class="btn btn-primary">Login</button>
-              <button id="emailSignup" class="btn btn-ghost">Sign up</button>
+              <button id="emailSignup" class="btn">Sign up</button>
             </div>
           </div>
         </main>
@@ -301,6 +462,7 @@
 
     async function loadProfile(userId){
       try {
+        // requires auth by rules
         const ref = doc(db,'users',userId);
         const s = await getDoc(ref);
         state.profileUser = s.exists()? s.data() : null;
@@ -310,7 +472,6 @@
     function Profile(){
       const u = state.profileUser;
       if(!u) return `<main class="mx-auto max-w-3xl px-4"><div class="glass p-6 mt-6">User not found.</div></main>`;
-      const my = uid()===u.uid;
       const posts = state.posts.filter(p=>p.authorId===u.uid);
       return `
         <main class="mx-auto max-w-5xl px-4 pb-24">
@@ -318,10 +479,9 @@
             <div class="flex gap-4 items-center">
               <img src="${u.avatar}" class="w-20 h-20 rounded-full"/>
               <div class="flex-1">
-                <div class="text-2xl font-semibold">${u.name}</div>
+                <div class="text-2xl font-semibold">${escapeHtml(u.name)}</div>
                 <div class="opacity-70 text-sm">Joined ${rel(u.createdAt)}</div>
               </div>
-              ${my? '' : `<button class="btn" onclick="toggleFollow('${u.uid}')">Follow</button>`}
             </div>
             <p class="mt-3">${escapeHtml(u.bio||'')}</p>
           </div>
@@ -335,7 +495,6 @@
 
     // ===== CHAT UI =====
     function ChatPage(){
-      const usersSnapshot = []; // we'll render participants by reading DB snapshot inside render()
       const msgsHtml = state.chatMsgs.map(m => {
         const meClass = m.senderId === uid() ? 'me' : 'other';
         const replyHtml = m.reply ? `<div class="reply">↪ ${escapeHtml(m.reply.content)}</div>` : '';
@@ -345,7 +504,9 @@
             <div class="font-medium text-sm">${escapeHtml(m.senderName)}</div>
             <div class="mt-1">${escapeHtml(m.content)}</div>
             <div class="timestamp">${ts}</div>
-            <div style="position:absolute; top:-8px; right:-40px;"><button class="btn" onclick="setReply('${m.id}','${escapeAttr(m.content)}')">Reply</button></div>
+            <div style="position:relative; margin-top:6px;">
+              <button class="btn react-btn" onclick="setReply('${m.id}','${escapeAttr(m.content)}')">Reply</button>
+            </div>
           </div>`;
       }).join('');
 
@@ -365,7 +526,7 @@
 
               <div id="messages">${ msgsHtml || `<div class="p-6 text-center opacity-70">No messages yet — say hi 👋</div>` }</div>
 
-              <form class="message-form" onsubmit="event.preventDefault(); (async()=>{ await sendChat(document.getElementById('chatInput').value); document.getElementById('chatInput').value=''; })();">
+              <form class="message-form" onsubmit="event.preventDefault(); (async()=>{ const el=document.getElementById('chatInput'); if(!el) return; await sendChat(el.value); el.value=''; })();">
                 <input id="chatInput" autocomplete="off" placeholder="${ state.user ? 'Type a message...' : 'Login to send messages' }" ${ state.user ? '' : 'disabled' } />
                 <button type="submit" class="btn btn-primary" ${ state.user ? '' : 'disabled' }>Send</button>
               </form>
@@ -378,34 +539,18 @@
     // ===== RENDER & BIND =====
     function render(){
       const app = $('#app');
-      const mainHtml = state.user ? ( state.route === '#/chat' ? ChatPage() : ( state.route.startsWith('#/profile/') ? Profile() : Feed() ) ) : Login();
+      const mainHtml = state.user
+        ? ( state.route === '#/chat' ? ChatPage() : ( state.route.startsWith('#/profile/') ? Profile() : Feed() ) )
+        : Login();
       app.innerHTML = `${Navbar()}${mainHtml}`;
       bindEvents();
 
-      // if chat route active: ensure listeners running & inject participants list
+      // start/stop chat listeners based on route+auth
       if(state.route === '#/chat' && state.user){
-        startChatListeners(); // idempotent (stops & starts)
-        // populate participants panel from users collection snapshot (we have live snapshot already)
-        onSnapshot(collection(db,'users'), snap => {
-          const me = auth.currentUser?.uid;
-          const html = snap.docs.map(d => {
-            const u = d.data();
-            return `<div class="participant ${u.uid===me?'current-user':''}">
-              <img src="${u.avatar || DEFAULT_AVATAR}" />
-              <div>
-                <div class="font-medium text-sm">${escapeHtml(u.name || 'User')} ${u.uid===me?'<span class="text-xs opacity-70">(You)</span>':''}</div>
-                <div class="text-xs opacity-60">${u.lastActive ? rel(u.lastActive) : ''}</div>
-              </div>
-            </div>`;
-          }).join('');
-          const panel = $('#participantsPanel');
-          if(panel) panel.innerHTML = html;
-        });
-        setTimeout(()=>{ const box = $('#messages'); if(box) box.scrollTop = box.scrollHeight; }, 200);
+        startChatListeners(); // idempotent; we stop first inside
+        setTimeout(()=>{ const box = $('#messages'); if(box) box.scrollTop = box.scrollHeight; }, 150);
       } else {
-        // stop chat listeners if not on chat
-        if(state.chatUnsub){ state.chatUnsub(); state.chatUnsub = null; }
-        if(state.usersUnsub){ state.usersUnsub(); state.usersUnsub = null; }
+        stopChatListeners();
       }
     }
 
@@ -414,26 +559,60 @@
       const logoutBtn = $('#logoutBtn'); if(logoutBtn) logoutBtn.onclick = ()=> signOut(auth).catch(e=>console.error(e));
 
       // Google login
-      const googleBtn = $('#googleBtn'); if(googleBtn) googleBtn.onclick = async ()=> { try { await signInWithPopup(auth, provider); } catch(e){ console.error(e); alert(e.message); } };
+      const googleBtn = $('#googleBtn'); if(googleBtn) googleBtn.onclick = async ()=> {
+        try { await signInWithPopup(auth, provider); }
+        catch(e){ console.error(e); alert(e.message); }
+      };
 
       // email login/signup
       const emailLogin = $('#emailLogin'); const emailSignup = $('#emailSignup');
-      if(emailLogin) emailLogin.onclick = async ()=> { try { const em = ($('#lemail')?.value||'').trim(); const pw = ($('#lpass')?.value||''); await signInWithEmailAndPassword(auth, em, pw); } catch(e){ alert(e.message); console.error(e); } };
-      if(emailSignup) emailSignup.onclick = async ()=> { try { const em = ($('#lemail')?.value||'').trim(); const pw = ($('#lpass')?.value||''); const cred = await createUserWithEmailAndPassword(auth, em, pw); await updateProfile(cred.user, { displayName: em.split('@')[0] }); } catch(e){ alert(e.message); console.error(e); } };
+      if(emailLogin) emailLogin.onclick = async ()=> {
+        try {
+          const em = ($('#lemail')?.value||'').trim();
+          const pw = ($('#lpass')?.value||'');
+          await signInWithEmailAndPassword(auth, em, pw);
+        } catch(e){ alert(e.message); console.error(e); }
+      };
+      if(emailSignup) emailSignup.onclick = async ()=> {
+        try {
+          const em = ($('#lemail')?.value||'').trim();
+          const pw = ($('#lpass')?.value||'');
+          const cred = await createUserWithEmailAndPassword(auth, em, pw);
+          await updateProfile(cred.user, { displayName: em.split('@')[0] });
+        } catch(e){ alert(e.message); console.error(e); }
+      };
 
       // Post create
-      const postBtn = $('#postBtn'); if(postBtn) postBtn.onclick = async ()=> { try { const text = $('#postText')?.value||''; const img = $('#postImg')?.value||''; await createPost({ text, imageUrl: img }); if($('#postText')) $('#postText').value=''; if($('#postImg')) $('#postImg').value=''; } catch(e){ console.error(e); } };
+      const postBtn = $('#postBtn'); if(postBtn) postBtn.onclick = async ()=> {
+        try {
+          const text = $('#postText')?.value||'';
+          const img = $('#postImg')?.value||'';
+          await createPost({ text, imageUrl: img });
+          if($('#postText')) $('#postText').value='';
+          if($('#postImg')) $('#postImg').value='';
+        } catch(e){ console.error(e); }
+      };
 
       // chat input enter
-      const chatInput = $('#chatInput'); if(chatInput){ chatInput.addEventListener('keydown', e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); document.querySelector('.message-form button[type="submit"]')?.click(); } }); }
+      const chatInput = $('#chatInput');
+      if(chatInput){
+        chatInput.addEventListener('keydown', e => {
+          if(e.key==='Enter' && !e.shiftKey){
+            e.preventDefault();
+            document.querySelector('.message-form button[type="submit"]')?.click();
+          }
+        });
+      }
     }
 
     // initial route render
     parseRoute();
 
-    // small helpers
+    // small helpers exposed
     window.navigate = navigate;
     window.sendChat = sendChat;
+    window.toggleReaction = toggleReaction;
+    window.addComment = addComment;
   </script>
 </body>
 </html>
