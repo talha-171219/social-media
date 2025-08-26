@@ -751,15 +751,6 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// ===== CHAT: Send button click handler =====
-document.getElementById('send-btn').addEventListener('click', async () => {
-  const inp = document.getElementById('chat-input');
-  const msg = inp.value.trim();
-  if (!msg) return;
-  await sendChat(msg);
-  inp.value = '';
-});
-
 
     // initial route render
     parseRoute();
