@@ -732,7 +732,8 @@ textarea.glass {
           window.setReply(id, content);
         }
       });
-        // Chat send button (delegated)
+      
+      // Chat send button (delegated)
 document.addEventListener('click', (e) => {
   const t = e.target;
   if (t && t.id === 'send-btn') {
@@ -743,8 +744,8 @@ document.addEventListener('click', (e) => {
     inp.value = '';
   }
 });
-
-      // Delegated navigation when clicking elements with data-nav inside posts (author name, sidebar links)
+      
+// Delegated navigation when clicking elements with data-nav inside posts (author name, sidebar links)
       document.addEventListener('click', (e) => {
         const t = e.target.closest('[data-nav]');
         if(t){
