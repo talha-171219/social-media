@@ -715,15 +715,7 @@
         }
       });
 
-      // Enter key handling for chat input (delegated)
-      document.addEventListener('keydown', (e)=>{
-        const active = document.activeElement;
-        if(active && active.id === 'chatInput' && e.key === 'Enter' && !e.shiftKey){
-          e.preventDefault();
-          const formButton = document.querySelector('.message-form button[type="submit"]');
-          if(formButton) formButton.click();
-        }
-      });
+      
 
       // Delegate click on "Reply" buttons inside messages we generate (they have data attributes above)
       document.addEventListener('click', (e) => {
@@ -744,6 +736,24 @@
         }
       });
     }
+      // ===== CHAT: Press Enter to send =====
+document.addEventListener('keydown', e => {
+  const active = document.activeElement;
+  if (active?.id === 'chat-input' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('send-btn').click();
+  }
+});
+
+// ===== CHAT: Send button click handler =====
+document.getElementById('send-btn').addEventListener('click', async () => {
+  const inp = document.getElementById('chat-input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  await sendChat(msg);
+  inp.value = '';
+});
+
 
     // initial route render
     parseRoute();
