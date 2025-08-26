@@ -22,8 +22,14 @@
     .btn { padding:.5rem .75rem; border-radius:9999px; font-weight:500; transition:opacity .15s; display:inline-flex; align-items:center; gap:.4rem; cursor:pointer; }
     .btn-primary { background:#1877F2; color:#fff; }
     .chip { font-size:.75rem; padding:.25rem .5rem; border-radius:9999px; background:rgba(255,255,255,0.08); display:inline-flex; align-items:center; gap:.35rem; }
-    input.glass, textarea.glass { background: rgba(255,255,255,0.02); border:none; color:inherit; }
-    a { color:#93c5fd; }
+    /* নতুন সিলেক্টর */
+input.glass,
+textarea.glass {
+  background: rgba(255, 255, 255, 0.02);
+  border: none;
+  color: inherit;
+}
+  a { color:#93c5fd; }
     #app { min-height:100vh; padding:24px 12px; }
     footer { color: #9ca3af; }
 
@@ -62,21 +68,488 @@
   <footer class="text-center py-6">Built with <span style="color:#1DB954">♥</span> — Glassy Social + Chat</footer>
 
   <script type="module">
-    /* তোমার আগের কোড একদম একই রইল...
-       শুধু নিচের পরিবর্তনগুলো হলো 👇 */
+    // =========================
+    // Firebase v12.1.0 imports
+    // =========================
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+    import {
+      getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+    import {
+      getFirestore, collection, doc, setDoc, getDoc, addDoc, query, orderBy, onSnapshot, serverTimestamp, updateDoc, deleteDoc
+    } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-    // ========== FIXED PART ==========
+    // ===== CONFIG: use your project config =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyAatiY08DpbdqK6pAE53OWkQOJZJYTZbdI",
+      authDomain: "social-app-f4758.firebaseapp.com",
+      projectId: "social-app-f4758",
+      storageBucket: "social-app-f4758.appspot.com",
+      messagingSenderId: "381586413963",
+      appId: "1:381586413963:web:2cead65d0b849aa277378e"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+    const DEFAULT_AVATAR = "https://i.pravatar.cc/150?img=12";
+
+    // ===== STATE =====
+    const state = {
+      user: null,
+      posts: [],
+      postExtras: {},
+      postsUnsub: null,
+      chatMsgs: [],
+      chatUnsub: null,
+      usersUnsub: null,
+      route: '#/feed',
+      profileUser: null
+    };
+
+    // helpers
+    const $ = s => document.querySelector(s);
+    const uid = () => state.user?.uid;
+    const rel = (ts) => ts?.seconds ? dayjs.unix(ts.seconds).fromNow() : 'just now';
+    const escapeHtml = (str) => (str||'').replace(/[&<>'"]/g, (c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','\'':'&#39;','"':'&quot;'}[c]));
+    const escapeAttr = (str) => (str||'').replace(/"/g,'&quot;').replace(/'/g,"&#39;");
+
+    // navigation
+    function navigate(h){ window.location.hash = h; }
+    function getHash(){ return window.location.hash || '#/feed'; }
+
+    // Robust parseRoute (safe)
+    async function parseRoute(){
+      try {
+        const h = getHash();
+        if((h === '#/chat' || h.startsWith('#/profile/')) && !state.user){
+          navigate('#/login'); render(); return;
+        }
+        state.route = h;
+        if(h.startsWith('#/profile/')){
+          const pid = h.split('/')[2];
+          if(!state.user){ navigate('#/login'); render(); return; }
+          await loadProfile(pid);
+        }
+        render();
+      } catch(e){
+        console.error('parseRoute error', e);
+        render();
+      }
+    }
+    window.addEventListener('hashchange', parseRoute);
+
+    // ===== AUTH =====
+    onAuthStateChanged(auth, async (user) => {
+      try {
+        state.user = user || null;
+        if(user){
+          const uRef = doc(db,'users',user.uid);
+          const uSnap = await getDoc(uRef).catch(()=>null);
+          if(!uSnap || !uSnap.exists()){
+            await setDoc(uRef, {
+              uid: user.uid,
+              name: user.displayName || (user.email ? user.email.split('@')[0] : 'User'),
+              avatar: user.photoURL || `https://ui-avatars.com/api/?background=1DB954&color=fff&name=${encodeURIComponent((user.email||'U')[0]||'U')}`,
+              bio: 'New here ✨',
+              following: [],
+              createdAt: serverTimestamp()
+            });
+          } else {
+            await updateDoc(uRef, {
+              name: user.displayName || uSnap.data().name,
+              avatar: user.photoURL || uSnap.data().avatar,
+              lastActive: serverTimestamp()
+            }).catch(()=>{});
+          }
+
+          subscribePosts();
+          if(state.route === '#/chat') startChatListeners();
+          if(state.route === '#/login') navigate('#/feed');
+        } else {
+          unsubscribePosts();
+          stopChatListeners();
+          navigate('#/login');
+        }
+        render();
+      } catch(e){
+        console.error('onAuthStateChanged error', e);
+      }
+    });
+
+    // ===== POSTS (feed) =====
+    function subscribePosts(){
+      try {
+        if(state.postsUnsub) state.postsUnsub();
+        const qy = query(collection(db,'posts'), orderBy('createdAt','desc'));
+        state.postsUnsub = onSnapshot(qy, async snap => {
+          try {
+            state.posts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            for(const p of state.posts) ensurePostExtrasListeners(p.id);
+            if(state.route === '#/feed' || state.route.startsWith('#/profile/')) render();
+          } catch(e){ console.error('posts snapshot processing error', e); }
+        }, err => {
+          console.error('posts listener error', err);
+        });
+      } catch(e){ console.error('subscribePosts error', e); }
+    }
+
+    function unsubscribePosts(){
+      try {
+        if(state.postsUnsub){ state.postsUnsub(); state.postsUnsub = null; }
+        // also clear per-post listeners
+        for(const id in postReactionsUnsub){
+          try { postReactionsUnsub[id](); } catch(e) {}
+          delete postReactionsUnsub[id];
+        }
+        for(const id in postCommentsUnsub){
+          try { postCommentsUnsub[id](); } catch(e) {}
+          delete postCommentsUnsub[id];
+        }
+        state.postExtras = {};
+        state.posts = [];
+      } catch(e){ console.error('unsubscribePosts error', e); }
+    }
+
+    // Keep listeners map to avoid duplicates
+    const postReactionsUnsub = {};
+    const postCommentsUnsub = {};
+
+    function ensurePostExtrasListeners(postId){
+      try {
+        if(!postReactionsUnsub[postId]){
+          const rq = collection(db,'posts',postId,'reactions');
+          postReactionsUnsub[postId] = onSnapshot(rq, snap => {
+            const reactions = {};
+            let myReaction = null;
+            snap.forEach(docu=>{
+              const r = docu.data();
+              reactions[r.type] = (reactions[r.type]||0)+1;
+              if(uid() && docu.id === uid()) myReaction = r.type;
+            });
+            state.postExtras[postId] = state.postExtras[postId] || {};
+            state.postExtras[postId].reactions = reactions;
+            state.postExtras[postId].myReaction = myReaction;
+            if(state.route === '#/feed' || state.route.startsWith('#/profile/')) render();
+          }, err=>{ console.error('postReactions listener err', err); });
+        }
+        if(!postCommentsUnsub[postId]){
+          const cq = query(collection(db,'posts',postId,'comments'), orderBy('createdAt','asc'));
+          postCommentsUnsub[postId] = onSnapshot(cq, snap => {
+            const comments = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+            state.postExtras[postId] = state.postExtras[postId] || {};
+            state.postExtras[postId].comments = comments;
+            if(state.route === '#/feed' || state.route.startsWith('#/profile/')) render();
+          }, err=>{ console.error('postComments listener err', err); });
+        }
+      } catch(e){ console.error('ensurePostExtrasListeners error', e); }
+    }
+
+    async function createPost({ text, imageUrl }){
+      try {
+        if(!uid()) return alert('Login required');
+        const authorRef = doc(db,'users',uid());
+        const authorSnap = await getDoc(authorRef);
+        const author = authorSnap?.data?.() || authorSnap?.data() || authorSnap;
+        await addDoc(collection(db,'posts'), {
+          authorId: uid(),
+          authorName: author?.name || 'User',
+          authorPhoto: author?.avatar || DEFAULT_AVATAR,
+          text: (text||'').trim(),
+          imageUrl: (imageUrl||'').trim(),
+          commentsCount: 0,
+          createdAt: serverTimestamp()
+        });
+      } catch(e){
+        console.error('createPost error', e);
+        alert('Post failed: ' + (e.message||e));
+      }
+    }
+
+    async function toggleReaction(postId, type){
+      try {
+        if(!uid()) return alert('Login required');
+        const rref = doc(db,'posts',postId,'reactions', uid());
+        const my = state.postExtras[postId]?.myReaction || null;
+        if(my && my === type){
+          await deleteDoc(rref).catch(()=>{});
+        } else {
+          await setDoc(rref, { type, userId: uid(), createdAt: serverTimestamp() });
+        }
+      } catch(e){
+        console.error('toggleReaction error', e);
+        alert('Reaction failed: ' + (e.message||e));
+      }
+    }
+
+    async function addComment(postId, content){
+      try {
+        if(!uid()) return alert('Login required');
+        const c = (content||'').trim();
+        if(!c) return;
+        const author = state.user;
+        await addDoc(collection(db,'posts',postId,'comments'), {
+          authorId: uid(),
+          authorName: author.displayName || author.email?.split('@')[0] || 'User',
+          authorPhoto: author.photoURL || DEFAULT_AVATAR,
+          content: c,
+          createdAt: serverTimestamp()
+        });
+      } catch(e){
+        console.error('addComment error', e);
+        alert('Comment failed: ' + (e.message||e));
+      }
+    }
+
+    // ===== CHAT =====
+    let replyTo = null;
+    function startChatListeners(){
+      try {
+        stopChatListeners();
+        if(!uid()) return;
+        const mq = query(collection(db,'chats','general-chat','messages'), orderBy('timestamp','asc'));
+        state.chatUnsub = onSnapshot(mq, snap => {
+          state.chatMsgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          if(state.route === '#/chat') render();
+          const box = $('#messages'); if(box) box.scrollTop = box.scrollHeight;
+        }, err=>{ console.error('chat listener error', err); });
+
+        state.usersUnsub = onSnapshot(collection(db,'users'), snap => {
+          const panel = $('#participantsPanel');
+          if(panel){
+            const me = auth.currentUser?.uid;
+            const html = snap.docs.map(d => {
+              const u = d.data();
+              return `<div class="participant ${u.uid===me?'current-user':''}">
+                <img src="${u.avatar || DEFAULT_AVATAR}" />
+                <div>
+                  <div class="font-medium text-sm">${escapeHtml(u.name || 'User')} ${u.uid===me?'<span class="text-xs opacity-70">(You)</span>':''}</div>
+                  <div class="text-xs opacity-60">${u.lastActive ? rel(u.lastActive) : ''}</div>
+                </div>
+              </div>`;
+            }).join('');
+            panel.innerHTML = html;
+          }
+        }, err=>{ console.error('users listener error', err); });
+      } catch(e){ console.error('startChatListeners error', e); }
+    }
+
+    function stopChatListeners(){
+      try {
+        if(state.chatUnsub){ state.chatUnsub(); state.chatUnsub = null; }
+        if(state.usersUnsub){ state.usersUnsub(); state.usersUnsub = null; }
+        state.chatMsgs = [];
+      } catch(e){ console.error('stopChatListeners error', e); }
+    }
+
+    async function sendChat(content){
+      try {
+        if(!uid()) return alert('Login required');
+        if(!content || !content.trim()) return;
+        await addDoc(collection(db,'chats','general-chat','messages'), {
+          senderId: uid(),
+          senderName: state.user.displayName || state.user.email?.split('@')[0] || 'User',
+          senderAvatar: state.user.photoURL || DEFAULT_AVATAR,
+          content: content.trim(),
+          reply: replyTo ? { id: replyTo.id, content: replyTo.content } : null,
+          timestamp: serverTimestamp()
+        });
+        replyTo = null;
+      } catch(e){
+        console.error('sendChat error', e);
+        alert('Message send failed: ' + (e.message||e));
+      }
+    }
+
     window.setReply = (id, content) => {
+      // set reply object safely
       replyTo = { id, content };
-      const inp = document.getElementById('chat-input'); // <-- fixed id
+      const inp = $('#chatInput');
       if(inp){ inp.value = 'Reply: ' + content + ' '; inp.focus(); }
     };
 
-    // ===== CHAT UI (unchanged except consistent id) =====
+    // ===== UI pieces (render functions) =====
+    function Navbar(){
+      const u = state.user;
+      return `
+        <div class="glass header max-w-6xl mx-auto p-4 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-[#1DB954] grid place-items-center text-black font-extrabold">GS</div>
+            <div>
+              <div class="font-semibold">Glassy Social</div>
+              <div class="text-xs opacity-70">Firebase Demo</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn" data-nav="#/feed">Feed</button>
+            <button class="btn" data-nav="#/chat">Chat</button>
+            ${ u ? `<button class="btn" data-nav="#/profile/${u.uid}">Profile</button><button id="logoutBtn" class="btn btn-primary">Logout</button>` : `<button class="btn" data-nav="#/login">Login</button>` }
+          </div>
+        </div>
+      `;
+    }
+
+    function ReactionBar(p){
+      const extras = state.postExtras[p.id] || {};
+      const counts = extras.reactions || {};
+      const my = extras.myReaction || null;
+      const EMOJIS = ['👍','❤️','😂','😮','😢'];
+      const buttons = EMOJIS.map(e => `
+        <button class="react-btn ${my===e?'active':''}" data-reaction-post="${p.id}" data-reaction-type="${e}">${e} <span class="opacity-70 text-sm">${counts[e]||''}</span></button>
+      `).join(' ');
+      const total = Object.values(counts).reduce((a,b)=>a+b,0);
+      return `
+        <div class="flex items-center gap-2 mt-3 flex-wrap">
+          ${buttons}
+          <span class="text-xs opacity-70 ml-1">${total? total+' reactions':''}</span>
+        </div>
+      `;
+    }
+
+    function CommentsBlock(p){
+      const extras = state.postExtras[p.id] || {};
+      const comments = extras.comments || [];
+      const list = comments.length ? comments.map(c => `
+        <div class="flex gap-3 items-start py-2">
+          <img src="${c.authorPhoto || DEFAULT_AVATAR}" class="w-8 h-8 rounded-full"/>
+          <div class="flex-1">
+            <div class="text-sm font-medium">${escapeHtml(c.authorName||'User')}</div>
+            <div class="text-sm opacity-90">${escapeHtml(c.content||'')}</div>
+            <div class="text-xs opacity-60 mt-1">${rel(c.createdAt)}</div>
+          </div>
+        </div>
+      `).join('') : `<div class="text-sm opacity-60">No comments yet.</div>`;
+      return `
+        <div class="mt-3 border-t border-white/10 pt-3">
+          <div>${list}</div>
+          <form onsubmit="event.preventDefault(); (async()=>{ const i=document.getElementById('c_${p.id}'); if(i){ await addComment('${p.id}', i.value); i.value=''; } })();">
+            <div class="flex gap-2 mt-2">
+              <input id="c_${p.id}" class="flex-1 glass px-3 py-2 rounded-xl" placeholder="${ state.user ? 'Write a comment...' : 'Login to comment' }" ${ state.user ? '' : 'disabled' } />
+              <button class="btn btn-primary" ${ state.user ? '' : 'disabled' }>Comment</button>
+            </div>
+          </form>
+        </div>
+      `;
+    }
+
+    function PostComposer(){
+      if(!state.user) return '';
+      return `
+        <div class="glass p-4 mb-4 max-w-3xl">
+          <div class="flex gap-3 items-start">
+            <img src="${state.user.photoURL || DEFAULT_AVATAR}" class="w-10 h-10 rounded-full"/>
+            <div class="flex-1">
+              <textarea id="postText" rows="2" placeholder="What's on your mind?" class="w-full glass p-3 rounded-xl"></textarea>
+              <div class="mt-2 flex gap-2">
+                <input id="postImg" placeholder="Optional image URL" class="flex-1 glass px-3 py-2 rounded-xl" />
+                <button id="postBtn" class="btn" style="background:#1DB954;color:#000;font-weight:600;">Share</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function PostCard(p){
+      const imgHtml = p.imageUrl ? `<img src="${p.imageUrl}" class="mt-3 w-full rounded-xl max-h-[460px] object-cover"/>` : '';
+      return `
+        <article class="glass p-4 mb-4 max-w-3xl" data-post-id="${p.id}">
+          <div class="flex items-center gap-3">
+            <img src="${p.authorPhoto || DEFAULT_AVATAR}" class="w-10 h-10 rounded-full"/>
+            <div>
+              <div class="font-semibold hover:underline cursor-pointer" data-nav="#/profile/${p.authorId}">${escapeHtml(p.authorName||'User')}</div>
+              <div class="text-xs opacity-70">${rel(p.createdAt)}</div>
+            </div>
+          </div>
+          <div class="mt-3 whitespace-pre-wrap">${escapeHtml(p.text||'')}</div>
+          ${imgHtml}
+          ${ReactionBar(p)}
+          ${CommentsBlock(p)}
+        </article>
+      `;
+    }
+
+    function Feed(){
+      return `
+        <main class="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)_300px] gap-4 px-4 pb-24">
+          <aside class="hidden md:block glass p-4 h-max sticky top-[88px]">
+            <div class="font-semibold mb-3">Menu</div>
+            <ul class="space-y-2 text-sm">
+              <li><a href="#/feed" class="hover:underline">Home / Feed</a></li>
+              ${state.user ? `<li><a href="#/profile/${uid()}" class="hover:underline">My Profile</a></li>` : ''}
+              <li><a href="#/about" class="hover:underline">About</a></li>
+            </ul>
+          </aside>
+          <section>
+            ${PostComposer()}
+            <div id="postsContainer">
+              ${ state.posts.length ? state.posts.map(PostCard).join('') : `<div class="glass p-8 text-center">No posts yet. Be the first to share something! 🎉</div>` }
+            </div>
+          </section>
+          <aside class="hidden lg:block glass p-4 h-max sticky top-[88px]">
+            <div class="font-semibold mb-3">Suggestions</div>
+            <div class="text-sm opacity-70">(Optional) Show people to follow here.</div>
+          </aside>
+        </main>
+      `;
+    }
+
+    function Login(){
+      return `
+        <main class="mx-auto max-w-md px-4">
+          <div class="glass p-6 mt-10">
+            <h1 class="text-xl font-semibold mb-4">Welcome to Glassy Social</h1>
+            <button id="googleBtn" class="w-full btn" style="background:#1DB954;color:#000;font-weight:600;margin-bottom:.75rem;">Continue with Google</button>
+            <div class="text-center text-sm opacity-70 my-2">or</div>
+            <input id="lemail" class="w-full glass px-3 py-2 rounded-xl mb-2" placeholder="Email"/>
+            <input id="lpass" type="password" class="w-full glass px-3 py-2 rounded-xl mb-4" placeholder="Password"/>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="emailLogin" class="btn btn-primary">Login</button>
+              <button id="emailSignup" class="btn">Sign up</button>
+            </div>
+          </div>
+        </main>
+      `;
+    }
+
+    async function loadProfile(userId){
+      try {
+        const ref = doc(db,'users',userId);
+        const s = await getDoc(ref);
+        state.profileUser = s.exists()? s.data() : null;
+      } catch(e){ console.error('loadProfile error', e); state.profileUser = null; }
+    }
+
+    function Profile(){
+      const u = state.profileUser;
+      if(!u) return `<main class="mx-auto max-w-3xl px-4"><div class="glass p-6 mt-6">User not found.</div></main>`;
+      const posts = state.posts.filter(p=>p.authorId===u.uid);
+      return `
+        <main class="mx-auto max-w-5xl px-4 pb-24">
+          <div class="glass p-6 mt-6">
+            <div class="flex gap-4 items-center">
+              <img src="${u.avatar}" class="w-20 h-20 rounded-full"/>
+              <div class="flex-1">
+                <div class="text-2xl font-semibold">${escapeHtml(u.name)}</div>
+                <div class="opacity-70 text-sm">Joined ${rel(u.createdAt)}</div>
+              </div>
+            </div>
+            <p class="mt-3">${escapeHtml(u.bio||'')}</p>
+          </div>
+          <div class="mt-6">
+            <h2 class="mb-3 font-semibold">Posts</h2>
+            ${posts.length ? posts.map(PostCard).join('') : `<div class="glass p-6">No posts yet.</div>`}
+          </div>
+        </main>
+      `;
+    }
+
+    // ===== CHAT UI =====
     function ChatPage(){
       const msgsHtml = state.chatMsgs.map(m => {
         const meClass = m.senderId === uid() ? 'me' : 'other';
-        const replyHtml = m.reply ? <div class="reply">↪ ${escapeHtml(m.reply.content)}</div> : '';
+        const replyHtml = m.reply ? `<div class="reply">↪ ${escapeHtml(m.reply.content)}</div>` : '';
         const ts = m.timestamp ? (m.timestamp.seconds ? dayjs.unix(m.timestamp.seconds).format('HH:mm') : '') : '';
         return `<div class="message ${meClass}">
             ${replyHtml}
@@ -103,52 +576,200 @@
                 <div class="text-sm opacity-70">Public room</div>
               </div>
 
-              <div id="messages">${ msgsHtml || <div class="p-6 text-center opacity-70">No messages yet — say hi 👋</div> }</div>
-              <div class="flex items-center space-x-2 p-2 border-t border-gray-700">
-                <input id="chat-input" type="text" placeholder="Type a message..." class="flex-1 p-2 rounded-lg bg-gray-800 text-white outline-none"/>
-                <button id="send-btn" class="px-4 py-2 bg-blue-600 rounded-lg">Send</button>
-              </div>
+              <div id="messages">${ msgsHtml || `<div class="p-6 text-center opacity-70">No messages yet — say hi 👋</div>` }</div>
+               <div class="flex items-center space-x-2 p-2 border-t border-gray-700">
+ <input
+  id="chatInput"
+  type="text"
+  class="glass flex-1 p-2 placeholder-gray-400 text-sm focus:outline-none"
+  placeholder="Type a message…"
+/>
+  <button id="send-btn" class="px-4 py-2 bg-blue-600 rounded-lg">Send</button>
+</div>
+
             </div>
           </div>
         </main>
       `;
     }
 
-    // Delegated event handling (inside bindGlobalHandlers)
+    // ===== RENDER & BIND =====
+    let globalHandlersBound = false;
+
+    function render(){
+      const app = $('#app');
+      const mainHtml = state.user
+        ? ( state.route === '#/chat' ? ChatPage() : ( state.route.startsWith('#/profile/') ? Profile() : Feed() ) )
+        : Login();
+      app.innerHTML = `${Navbar()}${mainHtml}`;
+
+      // Bind UI events via delegated global handlers (bound once)
+      bindGlobalHandlers();
+
+      // start/stop chat listeners based on route+auth
+      if(state.route === '#/chat' && state.user){
+        startChatListeners();
+        setTimeout(()=>{ const box = $('#messages'); if(box) box.scrollTop = box.scrollHeight; }, 150);
+      } else {
+        stopChatListeners();
+      }
+    }
+
+    // Use delegated handlers and one-time binding to survive re-renders
     function bindGlobalHandlers(){
       if(globalHandlersBound) return;
       globalHandlersBound = true;
 
-      document.addEventListener('click', async (e) => {
+      // Navigation clicks (data-nav)
+      document.addEventListener('click', (e) => {
         const t = e.target;
+        if(!t) return;
+        // nav buttons
+        const nav = t.closest('[data-nav]');
+        if(nav){
+          const h = nav.getAttribute('data-nav');
+          if(h){ navigate(h); return; }
+        }
 
-        // send button (chat)
-        if(t.matches('#send-btn')){
-          const inp = document.getElementById('chat-input');
-          const msg = inp.value.trim();
-          if(!msg) return;
-          await sendChat(msg);
-          inp.value = '';
+        // logout
+        if(t.matches('#logoutBtn')){
+          signOut(auth).catch(e=>console.error(e));
           return;
         }
 
-        // ... তোমার আগের nav/logout/login/post event handlers এখানে অপরিবর্তিত থাকবে ...
+        // Google login
+        if(t.matches('#googleBtn')){
+          signInWithPopup(auth, provider).catch(e=>{ console.error(e); alert(e.message); });
+          return;
+        }
+
+        // email login
+        if(t.matches('#emailLogin')){
+          (async()=>{
+            try{
+              const em = ($('#lemail')?.value||'').trim();
+              const pw = ($('#lpass')?.value||'');
+              await signInWithEmailAndPassword(auth, em, pw);
+            } catch(e){ alert(e.message); console.error(e); }
+          })();
+          return;
+        }
+
+        // email signup
+        if(t.matches('#emailSignup')){
+          (async()=>{
+            try{
+              const em = ($('#lemail')?.value||'').trim();
+              const pw = ($('#lpass')?.value||'');
+              const cred = await createUserWithEmailAndPassword(auth, em, pw);
+              await updateProfile(cred.user, { displayName: em.split('@')[0] });
+            } catch(e){ alert(e.message); console.error(e); }
+          })();
+          return;
+        }
+
+        // Post create
+        if(t.matches('#postBtn')){
+          (async()=>{
+            try{
+              const text = ($('#postText')?.value||'');
+              const img = ($('#postImg')?.value||'');
+              await createPost({ text, imageUrl: img });
+              if($('#postText')) $('#postText').value='';
+              if($('#postImg')) $('#postImg').value='';
+            } catch(e){ console.error(e); }
+          })();
+          return;
+        }
+
+        // Reaction buttons (posts)
+        const reactBtn = t.closest('[data-reaction-post]');
+        if(reactBtn){
+          const pid = reactBtn.getAttribute('data-reaction-post');
+          const type = reactBtn.getAttribute('data-reaction-type');
+          if(pid && type) toggleReaction(pid, type);
+          return;
+        }
+
+        // Reply button inside chat messages (delegated)
+        if(t.closest('[data-reply-id]')){
+          const el = t.closest('[data-reply-id]');
+          const id = el.getAttribute('data-reply-id');
+          const content = el.getAttribute('data-reply-content') || '';
+          window.setReply(id, content);
+          return;
+        }
+
+        // Reply buttons created as data attributes (alternative)
+        if(t.matches('button[data-reply-id]')){
+          const id = t.getAttribute('data-reply-id');
+          const content = t.getAttribute('data-reply-content') || '';
+          window.setReply(id, content);
+          return;
+        }
       });
 
-      // Press Enter in chat input
-      document.addEventListener('keydown', async (e) => {
-        const active = document.activeElement;
-        if (active?.id === 'chat-input' && e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          document.querySelector('#send-btn')?.click();
+      // delegated click for chat message reply buttons that we render without data attributes:
+      document.addEventListener('click', (e)=>{
+        const t = e.target;
+        if(!t) return;
+        // chat inline reply (older pattern)
+        if(t.matches('.react-btn') && t.closest('#messages')){
+          const replyId = t.getAttribute('data-reply-id');
+          const replyContent = t.getAttribute('data-reply-content') || '';
+          if(replyId) window.setReply(replyId, replyContent);
+        }
+      });
+
+      
+
+      // Delegate click on "Reply" buttons inside messages we generate (they have data attributes above)
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-reply-id]');
+        if(btn){
+          const id = btn.getAttribute('data-reply-id');
+          const content = btn.getAttribute('data-reply-content') || '';
+          window.setReply(id, content);
+        }
+      });
+
+      // Delegated navigation when clicking elements with data-nav inside posts (author name, sidebar links)
+      document.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-nav]');
+        if(t){
+          const h = t.getAttribute('data-nav');
+          if(h){ navigate(h); }
         }
       });
     }
+      // ===== CHAT: Press Enter to send =====
+document.addEventListener('keydown', e => {
+  const active = document.activeElement;
+  if (active?.id === 'chat-input' && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('send-btn').click();
+  }
+});
 
-    // ========== END FIX ==========
+// ===== CHAT: Send button click handler =====
+document.getElementById('send-btn').addEventListener('click', async () => {
+  const inp = document.getElementById('chat-input');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  await sendChat(msg);
+  inp.value = '';
+});
+
 
     // initial route render
     parseRoute();
+
+    // small helpers exposed
+    window.navigate = navigate;
+    window.sendChat = sendChat;
+    window.toggleReaction = toggleReaction;
+    window.addComment = addComment;
+
   </script>
 </body>
 </html>
