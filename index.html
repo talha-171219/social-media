@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Social App</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;padding:0;background:#f4f4f4;}
+    header{background:#333;color:#fff;padding:10px;}
+    nav a{color:#fff;margin-right:15px;text-decoration:none;}
+    .container{padding:20px;}
+    .post,.message{background:#fff;padding:10px;margin-bottom:10px;border-radius:5px;}
+    .chat-box{height:300px;overflow-y:auto;background:#fff;padding:10px;border-radius:5px;margin-bottom:10px;}
+    .input-group{display:flex;}
+    .input-group input{flex:1;padding:10px;}
+    .input-group button{padding:10px;}
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- Firebase -->
+  <script type="module">
+    // Import Firebase SDK
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { 
+      getFirestore, collection, addDoc, query, orderBy, onSnapshot, doc, updateDoc, arrayUnion, getDocs
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { 
+      getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    // ===== Firebase Config =====
+    const firebaseConfig = {
+      apiKey: "YOUR_KEY",
+      authDomain: "YOUR_DOMAIN",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_BUCKET",
+      messagingSenderId: "YOUR_SENDER",
+      appId: "YOUR_APP_ID"
+    };
+    const appFB = initializeApp(firebaseConfig);
+    const db = getFirestore(appFB);
+    const auth = getAuth(appFB);
+
+    // ===== State =====
+    let state = {
+      user: null,
+      route: window.location.hash || '#/feed',
+      chatUnsub: null
+    };
+
+    // ===== Helpers =====
+    const $ = sel => document.querySelector(sel);
+
+    // ===== Components =====
+    function Navbar(){
+      return `
+        <header>
+          <nav>
+            <a href="#/feed">Feed</a>
+            <a href="#/chat">Chat</a>
+            <a href="#/profile/${state.user?.uid || ''}">Profile</a>
+            ${state.user ? <a href="#/logout">Logout</a> : <a href="#/login">Login</a>}
+          </nav>
+        </header>
+      `;
+    }
+
+    function Login(){
+      return `
+        <div class="container">
+          <h2>Login</h2>
+          <input id="login-email" placeholder="Email"><br><br>
+          <input id="login-pass" placeholder="Password" type="password"><br><br>
+          <button id="login-btn">Login</button>
+          <button id="signup-btn">Sign Up</button>
+        </div>
+      `;
+    }
+
+    function Feed(){
+      return `
+        <div class="container">
+          <h2>Feed</h2>
+          <div id="posts"></div>
+          <input id="new-post" placeholder="What's on your mind?">
+          <button id="post-btn">Post</button>
+        </div>
+      `;
+    }
+
+    function ChatPage(){
+      return `
+        <div class="container">
+          <h2>Chat</h2>
+          <div id="messages" class="chat-box"></div>
+          <div class="input-group">
+            <input id="chat-input" placeholder="Type a message...">
+            <button id="send-btn">Send</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function Profile(){
+      return `
+        <div class="container">
+          <h2>Profile</h2>
+          <p>User ID: ${state.user?.uid}</p>
+        </div>
+      `;
+    }
+
+    // ===== Rendering =====
+    function render(){
+      const app = $('#app');
+      const mainHtml = state.user
+        ? ( state.route === '#/chat' ? ChatPage() : ( state.route.startsWith('#/profile/') ? Profile() : Feed() ) )
+        : Login();
+      app.innerHTML = ${Navbar()}${mainHtml};
+
+      bindGlobalHandlers();
+
+      if(state.route === '#/chat' && state.user){
+        startChatListeners();
+        bindChatHandlers();   // ✅ নতুন লাইন (chat bindings)
+        setTimeout(()=>{ const box = $('#messages'); if(box) box.scrollTop = box.scrollHeight; }, 150);
+      } else {
+        stopChatListeners();
+      }
+    }
+
+    // ===== Global Handlers =====
+    function bindGlobalHandlers(){
+      // Login / Signup
+      const loginBtn = $('#login-btn');
+      const signupBtn = $('#signup-btn');
+      if(loginBtn){
+        loginBtn.onclick = async ()=>{
+          const email = $('#login-email').value;
+          const pass = $('#login-pass').value;
+          await signInWithEmailAndPassword(auth,email,pass);
+        };
+      }
+      if(signupBtn){
+        signupBtn.onclick = async ()=>{
+          const email = $('#login-email').value;
+          const pass = $('#login-pass').value;
+          await createUserWithEmailAndPassword(auth,email,pass);
+        };
+      }
+
+      // Post
+      const postBtn = $('#post-btn');
+      if(postBtn){
+        postBtn.onclick = async ()=>{
+          const text = $('#new-post').value;
+          if(text.trim()){
+            await addDoc(collection(db,"posts"),{
+              text,
+              user: state.user.uid,
+              time: Date.now()
+            });
+            $('#new-post').value='';
+          }
+        };
+      }
+
+      // Logout
+      if(state.route === '#/logout'){
+        signOut(auth);
+        window.location.hash = '#/login';
+      }
+    }
+
+    // ===== CHAT Handlers =====
+    // ✅ নতুন function যোগ
+    function bindChatHandlers(){
+      const inp = document.getElementById('chat-input');
+      const sendBtn = document.getElementById('send-btn');
+
+      if(inp && sendBtn){
+        if(!sendBtn._bound){
+          sendBtn._bound = true;
+
+          sendBtn.addEventListener('click', async () => {
+            const msg = inp.value.trim();
+            if (!msg) return;
+            await sendChat(msg);
+            inp.value = '';
+          });
+
+          inp.addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              sendBtn.click();
+            }
+          });
+        }
+      }
+    }
+
+    async function sendChat(msg){
+      await addDoc(collection(db,"messages"),{
+        text: msg,
+        user: state.user.uid,
+        time: Date.now()
+      });
+    }
+
+    function startChatListeners(){
+      if(state.chatUnsub) return;
+      const q = query(collection(db,"messages"), orderBy("time"));
+      state.chatUnsub = onSnapshot(q,snap=>{
+        const box = $('#messages');
+        if(!box) return;
+        box.innerHTML='';
+        snap.forEach(doc=>{
+          const m = doc.data();
+          box.innerHTML += <div class="message"><b>${m.user}</b>: ${m.text}</div>;
+        });
+        box.scrollTop = box.scrollHeight;
+      });
+    }
+
+    function stopChatListeners(){
+      if(state.chatUnsub){ state.chatUnsub(); state.chatUnsub=null; }
+    }
+
+    // ===== Routing =====
+    window.addEventListener('hashchange',()=>{
+      state.route = window.location.hash;
+      render();
+    });
+
+    // ===== Auth =====
+    onAuthStateChanged(auth,u=>{
+      state.user=u;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
