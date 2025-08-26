@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glassy Social + Chat — Single File</title>
+
+  <!-- Tailwind (dev ok) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: { fb: { blue: '#1877F2' }, spotify: { green: '#1DB954' } },
+        boxShadow: { glass: '0 8px 32px 0 rgba(31, 38, 135, 0.37)' }
+      } }
+    }
+  </script>
+
+  <style>
+    /* common glass look */
+    body { background: radial-gradient(1200px 800px at 20% 0%, #0d0f12 10%, #0b0b0b 60%, #090909 100%); color:#f3f4f6; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .glass { background: rgba(18,18,18,0.55); border:1px solid rgba(255,255,255,0.08); box-shadow:0 8px 32px 0 rgba(31,38,135,0.25); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius:1rem; }
+    .btn { padding:0.5rem .75rem; border-radius:9999px; font-weight:500; transition: opacity .15s ease; display:inline-flex; align-items:center; gap:.4rem; cursor:pointer; }
+    .btn-primary { background:#1877F2; color:#fff; }
+    .chip { font-size:.75rem; padding:.25rem .5rem; border-radius:9999px; background:rgba(255,255,255,0.08); display:inline-flex; align-items:center; gap:.35rem; }
+    input.glass, textarea.glass { background: rgba(255,255,255,0.02); border:none; color:inherit; }
+    a { color:#93c5fd; }
+    /* layout tweaks */
+    #app { min-height:100vh; padding:24px 12px; }
+    .header-glass { display:flex; align-items:center; gap:12px; padding:12px; border-radius:12px; }
+    /* Chat styles (adapted) */
+    .chat-shell { display:flex; gap:16px; align-items:stretch; }
+    .chat-left { width:320px; max-height:80vh; overflow:auto; }
+    .chat-main { flex:1; display:flex; flex-direction:column; max-height:80vh; border-radius:12px; overflow:hidden; }
+    .participants { padding:8px; border-bottom:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
+    .participant { display:flex; gap:10px; align-items:center; padding:8px; border-radius:10px; }
+    .participant img { width:36px; height:36px; border-radius:999px; object-fit:cover; border:1px solid rgba(255,255,255,0.06); }
+    #messages { flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:12px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.00)); }
+    .message { max-width:72%; padding:10px 14px; border-radius:14px; border:1px solid rgba(255,255,255,0.06); }
+    .me { align-self:flex-end; background: linear-gradient(180deg, rgba(29,185,84,0.22), rgba(29,185,84,0.12)); }
+    .other { align-self:flex-start; background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04)); }
+    .timestamp { font-size:0.72rem; opacity:.75; margin-top:6px; text-align:right; }
+    .message-form { display:flex; gap:10px; padding:12px; border-top:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); }
+    .message-form input { flex:1; padding:12px 14px; border-radius:999px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:inherit; }
+    .send-btn { width:48px; height:48px; border-radius:999px; background:#1db954; color:#000; font-weight:700; display:grid; place-items:center; box-shadow:0 8px 20px rgba(29,185,84,0.2); border:none; }
+    /* responsive */
+    @media (max-width:900px){ .chat-left{ display:none; } .chat-shell{ flex-direction:column; } .chat-main{ max-height:70vh; } }
+  </style>
+
+  <!-- lucide icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Day.js -->
+  <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>
+  <script src="https://unpkg.com/dayjs@1.11.10/plugin/relativeTime.js"></script>
+  <script> dayjs.extend(window.dayjs_plugin_relativeTime); </script>
+
+  <!-- Firebase (modular v10.12.2) -->
+  <script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { getFirestore, collection, doc, setDoc, getDoc, addDoc, query, orderBy, onSnapshot, serverTimestamp, updateDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+  // ===== FIREBASE CONFIG =====
+  // Replace below with your firebase config if different.
+  const firebaseConfig = {
+    apiKey: "AIzaSyAatiY08DpbdqK6pAE53OWkQOJZJYTZbdI",
+    authDomain: "social-app-f4758.firebaseapp.com",
+    projectId: "social-app-f4758",
+    storageBucket: "social-app-f4758.firebasestorage.app",
+    messagingSenderId: "381586413963",
+    appId: "1:381586413963:web:2cead65d0b849aa277378e"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const provider = new GoogleAuthProvider();
+  const DEFAULT_AVATAR = "https://i.pravatar.cc/150?img=12";
+
+  // ===== APP STATE =====
+  const state = { user:null, posts:[], postsUnsub:null, messagesUnsub:null, usersUnsub:null, route: '#/feed', chatMsgs: [] };
+
+  // small utils
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const uid = () => state.user?.uid;
+  const relTime = (ts) => ts?.seconds ? dayjs.unix(ts.seconds).fromNow() : 'just now';
+
+  // navigation
+  function navigate(h){ window.location.hash = h; }
+  function getHash(){ return window.location.hash || '#/feed'; }
+
+  // parse route
+  function parseRoute(){
+    const h = getHash(); state.route = h;
+    if(h.startsWith('#/profile/')){ const pid = h.split('/')[2]; loadProfile(pid).then(()=>render()); }
+    else render();
+  }
+  window.addEventListener('hashchange', parseRoute);
+
+  // ===== AUTH LISTENER =====
+  onAuthStateChanged(auth, async (user)=>{
+    state.user = user;
+    if(user){
+      // ensure user doc
+      const uRef = doc(db, 'users', user.uid);
+      const snap = await getDoc(uRef);
+      if(!snap.exists()){
+        await setDoc(uRef, { uid:user.uid, name:user.displayName || (user.email ? user.email.split('@')[0] : 'User'), avatar:user.photoURL || `https://ui-avatars.com/api/?background=1DB954&color=fff&name=${encodeURIComponent((user.email||'U')[0]||'U')}`, bio:'New here ✨', following: [], createdAt: serverTimestamp() });
+      } else {
+        // update last seen / avatar in case changed
+        await updateDoc(uRef, { name: user.displayName||snap.data().name, avatar: user.photoURL||snap.data().avatar, lastActive: serverTimestamp() }).catch(()=>{});
+      }
+      subscribeFeed();
+      if(state.route === '#/login') navigate('#/feed');
+    } else {
+      unsubscribeFeed();
+      navigate('#/login');
+    }
+    render();
+  });
+
+  // ===== DATA: posts =====
+  function subscribeFeed(){
+    if(state.postsUnsub) state.postsUnsub();
+    const q = query(collection(db,'posts'), orderBy('createdAt','desc'));
+    state.postsUnsub = onSnapshot(q, snap => { state.posts = snap.docs.map(d=>({ id:d.id, ...d.data() })); render(); });
+  }
+  function unsubscribeFeed(){ if(state.postsUnsub){ state.postsUnsub(); state.postsUnsub = null; } }
+
+  async function createPost({text,imageUrl}){
+    if(!uid()) return;
+    const authorRef = doc(db,'users',uid());
+    const authorSnap = await getDoc(authorRef);
+    const author = authorSnap.data();
+    await addDoc(collection(db,'posts'), { authorId: uid(), authorName: author?.name||'User', authorPhoto: author?.avatar, text:(text||'').trim(), imageUrl:(imageUrl||'').trim(), reactions:{}, commentsCount:0, createdAt: serverTimestamp() });
+  }
+
+  // ===== CHAT logic =====
+  // We'll store messages at: chats/general/messages
+  let replyTo = null;
+  function startChatListeners(){
+    // stop old
+    if(state.messagesUnsub) state.messagesUnsub();
+    if(state.usersUnsub) state.usersUnsub();
+
+    // messages query
+    const mq = query(collection(db,'chats','general','messages'), orderBy('timestamp','asc'));
+    state.messagesUnsub = onSnapshot(mq, snap => {
+      state.chatMsgs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+      // render only if on chat route
+      if(state.route === '#/chat') render();
+    });
+
+    // participants / users
+    state.usersUnsub = onSnapshot(collection(db,'users'), snap => {
+      if(state.route === '#/chat') render();
+    });
+  }
+
+  async function sendChatMessage(content){
+    if(!uid()) return;
+    if(!content || !content.trim()) return;
+    const ref = collection(db,'chats','general','messages');
+    await addDoc(ref, {
+      senderId: uid(),
+      senderName: state.user.displayName || state.user.email.split('@')[0] || 'User',
+      senderAvatar: state.user.photoURL || DEFAULT_AVATAR,
+      content: content.trim(),
+      reply: replyTo ? { id: replyTo.id, content: replyTo.content } : null,
+      timestamp: serverTimestamp()
+    });
+    replyTo = null;
+  }
+
+  // set reply helper used by rendered HTML
+  window.setReply = (id, content) => { replyTo = { id, content }; const input = $('#chatInput'); if(input) input.value = 'Reply: '+content+' '; input?.focus(); }
+
+  // ===== UI components (strings) =====
+  function icon(name, cls='w-5 h-5 inline-block mr-1') { return `<i data-lucide="${name}" class="${cls}"></i>`; }
+
+  function Navbar(){
+    const u = state.user;
+    return `
+      <div class="glass header-glass px-4 py-3 max-w-6xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-[#1DB954] grid place-items-center text-black font-extrabold">GS</div>
+          <div>
+            <div class="font-semibold">Glassy Social</div>
+            <div class="text-xs opacity-60">Firebase demo</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn" onclick="navigate('#/feed')">Feed</button>
+          <button class="btn" onclick="navigate('#/chat')">Chat</button>
+          ${u ? `<button class="btn" onclick="navigate('#/profile/${u.uid}')">Profile</button><button id="logoutBtn" class="btn btn-primary">Logout</button>` : `<button class="btn" onclick="navigate('#/login')">Login</button>`}
+        </div>
+      </div>
+    `;
+  }
+
+  function PostComposer(){
+    if(!state.user) return '';
+    return `
+      <div class="glass p-4 mb-4">
+        <div class="flex gap-3 items-start">
+          <img src="${state.user.photoURL || DEFAULT_AVATAR}" class="w-10 h-10 rounded-full"/>
+          <div class="flex-1">
+            <textarea id="postText" rows="2" placeholder="What's on your mind?" class="w-full glass p-3 rounded-xl"></textarea>
+            <div class="mt-2 flex gap-2">
+              <input id="postImg" placeholder="Optional image URL" class="flex-1 glass px-3 py-2 rounded-xl" />
+              <button id="postBtn" class="btn" style="background:#1DB954;color:#000;font-weight:600;">Share</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function PostCard(p){
+    const imgHtml = p.imageUrl ? `<img src="${p.imageUrl}" class="mt-3 w-full rounded-xl max-h-[460px] object-cover"/>` : '';
+    return `
+      <article class="glass p-4 mb-4">
+        <div class="flex items-center gap-3">
+          <img src="${p.authorPhoto || DEFAULT_AVATAR}" class="w-10 h-10 rounded-full"/>
+          <div>
+            <div class="font-semibold hover:underline cursor-pointer" onclick="navigate('#/profile/${p.authorId}')">${p.authorName||'User'}</div>
+            <div class="text-xs opacity-70">${relTime(p.createdAt)}</div>
+          </div>
+        </div>
+        <div class="mt-3 whitespace-pre-wrap">${escapeHtml(p.text||'')}</div>
+        ${imgHtml}
+      </article>
+    `;
+  }
+
+  function Feed(){
+    return `
+      <main class="mx-auto max-w-6xl grid grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)_300px] gap-4 px-4 pb-24">
+        <aside class="hidden md:block glass p-4 h-max sticky top-[88px]">
+          <div class="font-semibold mb-3">Menu</div>
+          <ul class="space-y-2 text-sm">
+            <li><a href="#/feed" class="hover:underline">Home / Feed</a></li>
+            ${state.user ? `<li><a href="#/profile/${uid()}" class="hover:underline">My Profile</a></li>` : ''}
+            <li><a href="#/about" class="hover:underline">About</a></li>
+          </ul>
+        </aside>
+        <section>
+          ${PostComposer()}
+          ${state.posts.length ? state.posts.map(PostCard).join('') : `<div class="glass p-8 text-center">No posts yet. Be the first to share something! 🎉</div>`}
+        </section>
+        <aside class="hidden lg:block glass p-4 h-max sticky top-[88px]">
+          <div class="font-semibold mb-3">Suggestions</div>
+          <div class="text-sm opacity-70">(Optional) Show people to follow here.</div>
+        </aside>
+      </main>
+    `;
+  }
+
+  function Login(){
+    return `
+      <main class="mx-auto max-w-md px-4">
+        <div class="glass p-6 mt-10">
+          <h1 class="text-xl font-semibold mb-4">Welcome to Glassy Social</h1>
+          <button id="googleBtn" class="w-full btn" style="background:#1DB954;color:#000;font-weight:600;margin-bottom:.75rem;">Continue with Google</button>
+          <div class="text-center text-sm opacity-70 my-2">or</div>
+          <input id="lemail" class="w-full glass px-3 py-2 rounded-xl mb-2" placeholder="Email"/>
+          <input id="lpass" type="password" class="w-full glass px-3 py-2 rounded-xl mb-4" placeholder="Password"/>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="emailLogin" class="btn btn-primary">Login</button>
+            <button id="emailSignup" class="btn btn-ghost">Sign up</button>
+          </div>
+        </div>
+      </main>
+    `;
+  }
+
+  async function loadProfile(userId){
+    try {
+      const ref = doc(db,'users',userId);
+      const s = await getDoc(ref);
+      state.profileUser = s.exists()? s.data() : null;
+    } catch(e){ console.error('loadProfile error', e); state.profileUser = null; }
+  }
+
+  function Profile(){
+    const u = state.profileUser;
+    if(!u) return `<main class="mx-auto max-w-3xl px-4"><div class="glass p-6 mt-6">User not found.</div></main>`;
+    const my = uid()===u.uid;
+    const posts = state.posts.filter(p => p.authorId === u.uid);
+    return `
+      <main class="mx-auto max-w-5xl px-4 pb-24">
+        <div class="glass p-6 mt-6">
+          <div class="flex gap-4 items-center">
+            <img src="${u.avatar}" class="w-20 h-20 rounded-full"/>
+            <div class="flex-1">
+              <div class="text-2xl font-semibold">${u.name}</div>
+              <div class="opacity-70 text-sm">Joined ${relTime(u.createdAt)}</div>
+            </div>
+            ${my? '' : `<button class="btn" onclick="toggleFollow('${u.uid}')">Follow</button>`}
+          </div>
+          <p class="mt-3">${escapeHtml(u.bio||'')}</p>
+        </div>
+        <div class="mt-6">
+          <h2 class="mb-3 font-semibold">Posts</h2>
+          ${posts.length ? posts.map(PostCard).join('') : `<div class="glass p-6">No posts yet.</div>`}
+        </div>
+      </main>
+    `;
+  }
+
+  // ===== CHAT UI rendering =====
+  function ChatPage(){
+    // participants: render from users collection
+    // messages: state.chatMsgs
+    const usersHtml = (() => {
+      // we will query snapshot data directly from Firestore on render by reading collection snapshot
+      // But simpler: use cached state by reading users from onSnapshot — we don't keep them separately so we'll fetch quickly:
+      return ''; // we'll re-render participants inside render() to avoid extra queries here
+    })();
+
+    const messagesHtml = state.chatMsgs.map(m => {
+      const meClass = (m.senderId === uid()) ? 'me' : 'other';
+      const replyHtml = m.reply ? `<div class="text-sm opacity-80 mb-2 border-l-2 pl-3">↪ ${escapeHtml(m.reply.content)}</div>` : '';
+      const ts = m.timestamp ? (m.timestamp.seconds ? dayjs.unix(m.timestamp.seconds).format('HH:mm') : '') : '';
+      return `<div class="message ${meClass}">
+          ${replyHtml}
+          <div class="font-medium text-sm">${escapeHtml(m.senderName)}</div>
+          <div class="mt-1">${escapeHtml(m.content)}</div>
+          <div class="timestamp">${ts}</div>
+          <div style="position:absolute; top:-8px; right:-40px;"><button class="btn" onclick="setReply('${m.id}','${escapeAttr(m.content)}')">Reply</button></div>
+        </div>`;
+    }).join('');
+
+    return `
+      <main class="mx-auto max-w-6xl px-4 pb-24">
+        <div class="chat-shell">
+          <div class="chat-left glass p-3">
+            <div class="font-semibold mb-2">People</div>
+            <div class="participants" id="participantsPanel">
+              <!-- participants will be injected -->
+            </div>
+          </div>
+
+          <div class="chat-main glass">
+            <div style="padding:12px; border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center;">
+              <div class="font-semibold">General Chat</div>
+              <div class="text-sm opacity-70">Public room</div>
+            </div>
+
+            <div id="messages">${messagesHtml || `<div class="p-6 text-center opacity-70">No messages yet — say hi 👋</div>`}</div>
+
+            <form class="message-form" onsubmit="event.preventDefault(); (async()=>{ await sendChatMessage(document.getElementById('chatInput').value); document.getElementById('chatInput').value=''; })();">
+              <input id="chatInput" autocomplete="off" placeholder="${ state.user ? 'Type a message...' : 'Login to send messages' }" ${ state.user ? '' : 'disabled' } />
+              <button type="submit" class="send-btn" ${ state.user ? '' : 'disabled' }>➤</button>
+            </form>
+          </div>
+
+        </div>
+      </main>
+    `;
+  }
+
+  // ===== RENDER & BIND =====
+  function render(){
+    const app = document.getElementById('app');
+    // decide main area based on route and auth
+    const main = (state.user ? (state.route === '#/chat' ? ChatPage() : (state.route.startsWith('#/profile/') ? Profile() : Feed())) : Login());
+    app.innerHTML = `${Navbar()}${main}`;
+    if(window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+
+    bindEvents();
+    // if chat route active, ensure chat listeners running & inject participants
+    if(state.route === '#/chat'){
+      startChatListeners();
+      // render participants directly (we had users snapshot running inside startChatListeners)
+      // for simplicity, read once:
+      onSnapshot(collection(db,'users'), snap => {
+        const me = auth.currentUser?.uid;
+        const html = snap.docs.map(d => {
+          const u = d.data();
+          return `<div class="participant ${u.uid === me ? 'current-user' : ''}">
+            <img src="${u.avatar || DEFAULT_AVATAR}" />
+            <div>
+              <div class="font-medium text-sm">${escapeHtml(u.name || 'User')} ${u.uid===me?'<span class="text-xs opacity-70">(You)</span>':''}</div>
+              <div class="text-xs opacity-60">${u.lastActive ? relTime(u.lastActive) : ''}</div>
+            </div>
+          </div>`;
+        }).join('');
+        const panel = document.getElementById('participantsPanel');
+        if(panel) panel.innerHTML = html;
+      });
+      // ensure messages container autoscroll
+      setTimeout(()=>{ const box = document.getElementById('messages'); if(box) box.scrollTop = box.scrollHeight; }, 150);
+    } else {
+      // unsubscribe chat listeners if present
+      if(state.messagesUnsub){ state.messagesUnsub(); state.messagesUnsub = null; }
+      if(state.usersUnsub){ state.usersUnsub(); state.usersUnsub = null; }
+    }
+  }
+
+  function bindEvents(){
+    // header buttons
+    const logoutBtn = document.getElementById('logoutBtn');
+    if(logoutBtn){ logoutBtn.onclick = ()=> signOut(auth).catch(e=>console.error(e)); }
+
+    // login buttons
+    const googleBtn = document.getElementById('googleBtn');
+    if(googleBtn) googleBtn.onclick = async ()=> { try { await signInWithPopup(auth, provider); } catch(e){ console.error(e); alert(e.message); } };
+
+    const emailLogin = document.getElementById('emailLogin');
+    const emailSignup = document.getElementById('emailSignup');
+    if(emailLogin) emailLogin.onclick = async ()=> {
+      try { const em = ($('#lemail')?.value || '').trim(); const pw = ($('#lpass')?.value || ''); await signInWithEmailAndPassword(auth, em, pw); } catch(e){ alert(e.message); console.error(e); }
+    };
+    if(emailSignup) emailSignup.onclick = async ()=> {
+      try { const em = ($('#lemail')?.value || '').trim(); const pw = ($('#lpass')?.value || ''); const cred = await createUserWithEmailAndPassword(auth, em, pw); await updateProfile(cred.user, { displayName: em.split('@')[0] }); } catch(e){ alert(e.message); console.error(e); }
+    };
+
+    // Post composer
+    const postBtn = document.getElementById('postBtn');
+    if(postBtn) postBtn.onclick = async ()=> {
+      try { const text = $('#postText')?.value || ''; const img = $('#postImg')?.value || ''; await createPost({text, imageUrl: img}); if($('#postText')) $('#postText').value=''; if($('#postImg')) $('#postImg').value=''; } catch(e){ console.error(e); }
+    };
+
+    // chat send via Enter
+    const chatInput = document.getElementById('chatInput');
+    if(chatInput){
+      chatInput.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); document.querySelector('.message-form button[type="submit"]')?.click(); }
+      });
+    }
+
+    // allow direct reply buttons exist -> they were rendered with onclick setReply(...) inline
+  }
+
+  // helpers
+  function escapeHtml(str){ return (str||'').replace(/[&<>'"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\'':'&#39;','"':'&quot;'}[c])); }
+  function escapeAttr(str){ return (str||'').replace(/"/g,'&quot;').replace(/'/g,"&#39;").replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Kickstart
+  parseRoute();
+
+  // keep listening to route change
+  window.addEventListener('load', ()=>{ window.lucide && window.lucide.createIcons && window.lucide.createIcons(); });
+
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <footer class="text-center text-xs opacity-60 py-6">Built with <span style="color:#1DB954">♥</span> – Glassy Social + Chat</footer>
+</body>
+</html>
