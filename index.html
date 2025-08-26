@@ -1,11 +1,18 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Glassy Social - Complete Social Platform</title>
+    <title>Glassy Social - Complete Social Platform</title> 
+    <link rel="icon" href="https://public-frontend-cos.metadl.com/mgx/img/favicon.png" type="image/png">
+    <meta name="description" content="Modern glass-style social media platform with real-time chat, posts, and profiles">
 
+    <!-- Tailwind CSS (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Day.js for date formatting -->
+    <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>
+    <script src="https://unpkg.com/dayjs@1.11.10/plugin/relativeTime.js"></script>
 
     <script>
         tailwind.config = {
@@ -20,11 +27,8 @@
         }
     </script>
 
-    <script src="https://unpkg.com/dayjs@1.11.10/dayjs.min.js"></script>
-    <script src="https://unpkg.com/dayjs@1.11.10/plugin/relativeTime.js"></script>
-    <script>dayjs.extend(window.dayjs_plugin_relativeTime);</script>
-
     <style>
+        /* --- Page look --- */
         body {
             background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
             color: #f8fafc;
@@ -33,16 +37,18 @@
             margin: 0;
             padding: 0;
         }
+
         .glass {
-            background: rgba(255,255,255,0.03);
+            background: rgba(255, 255, 255, 0.03);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255,255,255,0.06);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 12px;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
         }
+
         .btn {
-            padding: 0.6rem 1rem;
+            padding: 0.5rem 1rem;
             border-radius: 9999px;
             font-weight: 600;
             transition: all 0.15s ease;
@@ -50,53 +56,129 @@
             border: none;
             display: inline-flex;
             align-items: center;
-            gap: .5rem;
+            gap: 0.5rem;
+            text-decoration: none;
+            justify-content: center;
         }
-        .btn:hover{ transform: translateY(-2px); }
-        .btn-primary{ background: linear-gradient(135deg,#1DB954,#17a74a); color:#000; }
-        .btn-secondary{ background: linear-gradient(135deg,#1877F2,#166fe5); color:#fff; }
-        .btn-ghost{ background: rgba(255,255,255,0.04); color:#f8fafc; border:1px solid rgba(255,255,255,0.06); }
-        .input {
-            background: rgba(255,255,255,0.04);
-            border:1px solid rgba(255,255,255,0.06);
-            border-radius:10px;
-            padding:.6rem .9rem;
+
+        .btn:hover { transform: translateY(-1px); }
+
+        .btn-primary { background: linear-gradient(135deg, #1DB954, #17a74a); color: #000; }
+        .btn-secondary { background: linear-gradient(135deg, #1877F2, #166fe5); color: #fff; }
+        .btn-ghost { background: rgba(255, 255, 255, 0.04); color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.06); }
+        .btn-ghost:hover { background: rgba(255, 255, 255, 0.08); }
+
+        .input, .textarea {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 0.6rem 0.9rem;
             color: #f8fafc;
-            width:100%;
+            width: 100%;
         }
-        .input:focus { outline:none; border-color:#1DB954; box-shadow:0 0 0 4px rgba(29,185,84,0.08); }
+
+        .input:focus, .textarea:focus {
+            outline: none;
+            border-color: #1DB954;
+            box-shadow: 0 0 0 4px rgba(29, 185, 84, 0.08);
+        }
+
+        .textarea { resize: none; min-height: 80px; }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            background: #1DB954;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 0.6rem 0.9rem;
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            word-wrap: break-word;
+        }
+
+        .message.own {
+            background: linear-gradient(135deg, #1DB954, #17a74a);
+            color: #000;
+            margin-left: auto;
+            border-bottom-right-radius: 6px;
+        }
+
+        .message.other {
+            background: rgba(255, 255, 255, 0.06);
+            color: #f8fafc;
+            margin-right: auto;
+            border-bottom-left-radius: 6px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 1rem;
+            border-radius: 12px;
+            border-left: 4px solid #1DB954;
+            z-index: 1000;
+            transform: translateX(120%);
+            transition: transform 0.28s ease;
+            max-width: 320px;
+        }
+
+        .notification.show { transform: translateX(0); }
+
+        .loader {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #1DB954;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .hidden { display: none !important; }
+
         .reaction-btn {
-            padding:.35rem .6rem;
-            border-radius:9999px;
-            background: rgba(255,255,255,0.04);
-            border:1px solid rgba(255,255,255,0.06);
-            color:#f8fafc;
-            cursor:pointer;
-            display:inline-flex;
-            align-items:center;
-            gap:6px;
+            padding: 0.35rem 0.6rem;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #f8fafc;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
         }
-        .reaction-btn.active {
-            background: rgba(29,185,84,0.18);
-            border-color:#1DB954;
-            color:#1DB954;
-        }
-        .message { max-width: 70%; padding:.6rem .9rem; border-radius:12px; margin-bottom:.5rem; word-wrap:break-word; }
-        .message.own { background:linear-gradient(135deg,#1DB954,#17a74a); color:#000; margin-left:auto; border-bottom-right-radius:6px; }
-        .message.other { background: rgba(255,255,255,0.06); color:#f8fafc; margin-right:auto; border-bottom-left-radius:6px; }
-        .notification { position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.9); color:#fff; padding:1rem; border-radius:12px; border-left:4px solid #1DB954; z-index:1000; transform: translateX(120%); transition: transform .28s ease; max-width:320px; }
-        .notification.show{ transform: translateX(0); }
-        .loader { border:3px solid rgba(255,255,255,0.1); border-top:3px solid #1DB954; border-radius:50%; width:20px; height:20px; animation:spin 1s linear infinite; display:inline-block; }
-        @keyframes spin { 0%{transform:rotate(0)} 100%{transform:rotate(360deg)} }
-        @media (max-width:768px){ .message{ max-width:85% } }
+
+        .reaction-btn:hover { background: rgba(255, 255, 255, 0.08); }
+        .reaction-btn.active { background: rgba(29, 185, 84, 0.18); border-color: #1DB954; color: #1DB954; }
+
+        @media (max-width: 768px) { .message { max-width: 85%; } }
     </style>
 </head>
 <body>
-    <div id="app" class="p-6"></div>
     <div id="notifications"></div>
+    <div id="app"></div>
 
     <script type="module">
-        // Firebase imports (v10 modular)
+        // dayjs
+        dayjs.extend(window.dayjs_plugin_relativeTime);
+
+        // Firebase v10 modules
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import {
             getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
@@ -104,11 +186,11 @@
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
         import {
             getFirestore, collection, doc, setDoc, getDoc, addDoc, query, orderBy,
-            limit, onSnapshot, serverTimestamp, updateDoc, deleteDoc, increment, where, getDocs
+            limit, onSnapshot, serverTimestamp, updateDoc, deleteDoc, increment, getDocs
         } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
 
-        // --------- CONFIG (তোমার Firebase config এখানে) ----------
+        // ---------- Firebase config (kept as provided) ----------
         const firebaseConfig = {
             apiKey: "AIzaSyAatiY08DpbdqK6pAE53OWkQOJZJYTZbdI",
             authDomain: "social-app-f4758.firebaseapp.com",
@@ -124,110 +206,53 @@
         const storage = getStorage(app);
         const googleProvider = new GoogleAuthProvider();
 
-        // ---------- App state ----------
+        // ---------- Global state ----------
         const state = {
             user: null,
             currentRoute: 'feed',
             posts: [],
-            postReactions: {},
-            postComments: {},
             chatMessages: [],
+            userProfile: null,
             currentChatRoom: 'general',
             replyTo: null,
             isLoading: false,
-            unsubscribers: []
+            unsubscribers: [],
+            showComments: {} // track expanded comments by post id
         };
 
-        // ---------- Utils ----------
-        const formatTime = (timestamp) => {
-            if (!timestamp) return 'now';
-            if (timestamp.seconds) return dayjs.unix(timestamp.seconds).fromNow();
-            try { return dayjs(timestamp).fromNow(); } catch(e){ return 'now'; }
-        };
-
+        // ---------- Utilities ----------
         const escapeHtml = (text) => {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         };
 
+        const formatTime = (timestamp) => {
+            if (!timestamp) return 'now';
+            // Firestore serverTimestamp object has .seconds sometimes
+            if (timestamp.seconds) return dayjs.unix(timestamp.seconds).fromNow();
+            try { return dayjs(timestamp).fromNow(); } catch (e) { return 'now'; }
+        };
+
         const showNotification = (message) => {
             const notification = document.createElement('div');
-            notification.className = 'notification';
+            notification.className = 'notification glass';
             notification.innerHTML = `
                 <div class="flex items-center gap-2">
                     <div class="flex-1">${escapeHtml(message)}</div>
                     <button class="text-white hover:text-gray-300 text-xl">×</button>
                 </div>
             `;
-            notification.querySelector('button').onclick = () => notification.remove();
+            notification.querySelector('button').addEventListener('click', () => notification.remove());
             document.getElementById('notifications').appendChild(notification);
-            setTimeout(()=>notification.classList.add('show'), 50);
-            setTimeout(()=>{ notification.classList.remove('show'); setTimeout(()=>notification.remove(),300); }, 4500);
+            setTimeout(() => notification.classList.add('show'), 50);
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => notification.remove(), 300);
+            }, 4500);
         };
 
-        // ---------- Auth handlers ----------
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                state.user = user;
-                await createUserProfile(user); // ensure profile doc
-                // setup listeners now that we have user
-                teardownListeners();
-                setupPostsListener();
-                if (state.currentRoute === 'chat') setupChatListener();
-            } else {
-                state.user = null;
-                teardownListeners();
-                state.posts = [];
-                state.chatMessages = [];
-            }
-            render();
-        });
-
-        const handleGoogleLogin = async () => {
-            try {
-                state.isLoading = true; render();
-                const res = await signInWithPopup(auth, googleProvider);
-                await createUserProfile(res.user);
-                showNotification('Signed in with Google');
-            } catch (err) {
-                console.error(err); showNotification('Google sign-in failed');
-            } finally { state.isLoading = false; render(); }
-        };
-
-        const handleEmailAuth = async (email, password, isSignup=false, displayName='') => {
-            try {
-                state.isLoading = true; render();
-                let res;
-                if (isSignup) {
-                    res = await createUserWithEmailAndPassword(auth, email, password);
-                    if (displayName) await updateProfile(res.user, { displayName });
-                    await createUserProfile(res.user);
-                    showNotification('Account created');
-                } else {
-                    res = await signInWithEmailAndPassword(auth, email, password);
-                    showNotification('Signed in');
-                }
-            } catch (err) {
-                console.error(err); showNotification(err.message || 'Auth error');
-            } finally { state.isLoading = false; render(); }
-        };
-
-        const handleLogout = async () => {
-            try {
-                state.unsubscribers.forEach(u => u && typeof u === 'function' && u());
-                state.unsubscribers = [];
-                await signOut(auth);
-                state.user = null;
-                state.posts = [];
-                state.chatMessages = [];
-                state.currentRoute = 'feed';
-                showNotification('Signed out');
-                render();
-            } catch (err) { console.error(err); showNotification('Failed to sign out'); }
-        };
-
-        // ---------- Create / ensure user profile in Firestore ----------
+        // ---------- Auth helpers ----------
         const createUserProfile = async (user) => {
             try {
                 const userRef = doc(db, 'users', user.uid);
@@ -235,7 +260,7 @@
                 if (!userSnap.exists()) {
                     await setDoc(userRef, {
                         uid: user.uid,
-                        name: user.displayName || user.email?.split('@')[0] || 'User',
+                        name: user.displayName || (user.email ? user.email.split('@')[0] : 'User'),
                         email: user.email || null,
                         avatar: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=1DB954&color=000`,
                         bio: 'New to Glassy Social! 🌟',
@@ -244,328 +269,345 @@
                         postsCount: 0,
                         createdAt: serverTimestamp(),
                         lastActive: serverTimestamp(),
-                        role: 'user'
                     });
-                } else {
-                    await updateDoc(userRef, { lastActive: serverTimestamp() });
                 }
-            } catch (err) { console.error('createUserProfile error', err); }
+            } catch (error) {
+                console.error('Error creating user profile:', error);
+            }
         };
 
-        // ---------- Posts: create, delete, report ----------
-        const createPost = async (text, imageFile=null) => {
-            if (!state.user) { showNotification('Please sign in'); return; }
-            if (!text.trim() && !imageFile) { showNotification('Post is empty'); return; }
+        // ---------- Global event handlers (exposed to window for inline onclick usage) ----------
+        window.handleGoogleLogin = async () => {
+            try {
+                state.isLoading = true; render();
+                const result = await signInWithPopup(auth, googleProvider);
+                await createUserProfile(result.user);
+                showNotification('Successfully signed in with Google! ✔️');
+            } catch (error) {
+                console.error('Google login error:', error);
+                showNotification('Failed to sign in with Google');
+            } finally {
+                state.isLoading = false; render();
+            }
+        };
+
+        window.handleAuthSubmit = async (event) => {
+            event.preventDefault();
+            const isSignup = event.submitter && event.submitter.dataset && event.submitter.dataset.action === 'signup';
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const displayName = document.getElementById('displayName').value;
+
+            try {
+                state.isLoading = true; render();
+                if (isSignup) {
+                    const result = await createUserWithEmailAndPassword(auth, email, password);
+                    if (displayName) await updateProfile(result.user, { displayName });
+                    await createUserProfile(result.user);
+                    showNotification('Account created successfully! ✔️');
+                } else {
+                    await signInWithEmailAndPassword(auth, email, password);
+                    showNotification('Successfully signed in! ✔️');
+                }
+            } catch (error) {
+                console.error('Auth error:', error);
+                showNotification(error.message || 'Authentication failed');
+            } finally {
+                state.isLoading = false; render();
+            }
+        };
+
+        window.handleLogout = async () => {
+            try {
+                state.unsubscribers.forEach(u => u && typeof u === 'function' && u());
+                state.unsubscribers = [];
+                await signOut(auth);
+                state.user = null;
+                state.posts = [];
+                state.chatMessages = [];
+                state.userProfile = null;
+                state.currentRoute = 'feed';
+                showNotification('Successfully signed out! 🚪');
+                render();
+            } catch (error) {
+                console.error('Logout error:', error);
+                showNotification('Failed to sign out');
+            }
+        };
+
+        window.handleCreatePost = async () => {
+            const text = document.getElementById('postText')?.value || '';
+            const fileInput = document.getElementById('postImage');
+            const imageFile = fileInput && fileInput.files && fileInput.files[0];
+
+            if (!state.user) { showNotification('Please sign in to create posts'); return; }
+            if (!text.trim() && !imageFile) { showNotification('Please write something or select an image'); return; }
 
             try {
                 state.isLoading = true; render();
                 let imageUrl = '';
-                let imagePath = '';
+
                 if (imageFile) {
                     const path = `posts/${state.user.uid}/${Date.now()}_${imageFile.name}`;
                     const ref = storageRef(storage, path);
-                    const snap = await uploadBytes(ref, imageFile);
-                    imageUrl = await getDownloadURL(snap.ref);
-                    imagePath = path;
+                    const snapshot = await uploadBytes(ref, imageFile);
+                    imageUrl = await getDownloadURL(snapshot.ref);
                 }
 
-                const postData = {
+                await addDoc(collection(db, 'posts'), {
                     authorId: state.user.uid,
-                    authorName: state.user.displayName || 'User',
-                    authorAvatar: state.user.photoURL || '',
+                    authorName: state.user.displayName || state.user.email?.split('@')[0] || 'User',
+                    authorAvatar: state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user.displayName || 'User')}&background=1DB954&color=000`,
                     text: text.trim(),
                     imageUrl,
-                    imagePath,
                     commentsCount: 0,
                     reactionsCount: 0,
-                    visibility: 'public',
                     createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp()
-                };
+                });
 
-                const pRef = await addDoc(collection(db, 'posts'), postData);
-                // increment user's postsCount
-                const uRef = doc(db, 'users', state.user.uid);
-                await updateDoc(uRef, { postsCount: increment(1) });
+                const userRef = doc(db, 'users', state.user.uid);
+                await updateDoc(userRef, { postsCount: increment(1), lastActive: serverTimestamp() });
 
-                showNotification('Post created');
-                const t = document.getElementById('postText'); if (t) t.value = '';
-                const f = document.getElementById('postImage'); if (f) f.value = '';
-            } catch (err) {
-                console.error(err);
+                showNotification('Post created successfully!');
+                if (document.getElementById('postText')) document.getElementById('postText').value = '';
+                if (fileInput) fileInput.value = '';
+            } catch (error) {
+                console.error('Error creating post:', error);
                 showNotification('Failed to create post');
-            } finally { state.isLoading = false; render(); }
-        };
-
-        const deletePost = async (postId, postData = null) => {
-            if (!state.user) return;
-            try {
-                const pRef = doc(db, 'posts', postId);
-                const snap = await getDoc(pRef);
-                if (!snap.exists()) { showNotification('Post not found'); return; }
-                const data = postData || snap.data();
-                if (data.authorId !== state.user.uid) { showNotification('Not authorized'); return; }
-
-                // delete image from storage if exists
-                if (data.imagePath) {
-                    try { await deleteObject(storageRef(storage, data.imagePath)); } catch(e){ /* ignore */ }
-                }
-                // delete doc (note: subcollections remain — consider cloud function for cascade delete)
-                await deleteDoc(pRef);
-
-                // decrement user's postsCount
-                const uRef = doc(db, 'users', state.user.uid);
-                await updateDoc(uRef, { postsCount: increment(-1) });
-
-                showNotification('Post deleted');
-            } catch (err) {
-                console.error(err); showNotification('Failed to delete');
+            } finally {
+                state.isLoading = false; render();
             }
         };
 
-        const reportPost = async (postId, reason='') => {
-            if (!state.user) { showNotification('Please sign in'); return; }
+        window.deletePost = async (postId) => {
+            if (!state.user) return;
+            if (!confirm('Are you sure you want to delete this post?')) return;
             try {
-                await addDoc(collection(db, 'reports'), {
-                    postId,
-                    reporterId: state.user.uid,
-                    reason,
-                    createdAt: serverTimestamp()
-                });
-                showNotification('Post reported — thank you');
-            } catch (err) { console.error(err); showNotification('Failed to report'); }
+                await deleteDoc(doc(db, 'posts', postId));
+                const userRef = doc(db, 'users', state.user.uid);
+                await updateDoc(userRef, { postsCount: increment(-1) });
+                showNotification('Post deleted successfully');
+            } catch (error) {
+                console.error('Error deleting post:', error);
+                showNotification('Failed to delete post');
+            }
         };
 
-        // ---------- Reactions ----------
-        const toggleReaction = async (postId, reactionType) => {
-            if (!state.user) { showNotification('Please sign in'); return; }
+        window.toggleLike = async (postId) => {
+            if (!state.user) { showNotification('Please sign in to like posts'); return; }
             try {
                 const reactionRef = doc(db, 'posts', postId, 'reactions', state.user.uid);
                 const reactionSnap = await getDoc(reactionRef);
-                if (reactionSnap.exists() && reactionSnap.data().type === reactionType) {
+                const postRef = doc(db, 'posts', postId);
+
+                if (reactionSnap.exists()) {
                     await deleteDoc(reactionRef);
-                    await updateDoc(doc(db, 'posts', postId), { reactionsCount: increment(-1) });
+                    await updateDoc(postRef, { reactionsCount: increment(-1) });
                 } else {
                     await setDoc(reactionRef, {
-                        type: reactionType,
+                        type: 'like',
                         userId: state.user.uid,
-                        createdAt: serverTimestamp()
+                        createdAt: serverTimestamp(),
                     });
-                    await updateDoc(doc(db, 'posts', postId), { reactionsCount: increment(1) });
+                    await updateDoc(postRef, { reactionsCount: increment(1) });
                 }
-            } catch (err) { console.error(err); showNotification('Failed to react'); }
+            } catch (error) {
+                console.error('Error toggling like:', error);
+                showNotification('Failed to update like');
+            }
         };
 
-        // ---------- Comments ----------
-        const addComment = async (postId, content) => {
-            if (!state.user || !content.trim()) return false;
+        window.toggleComments = (postId) => {
+            state.showComments[postId] = !state.showComments[postId];
+            render();
+        };
+
+        window.handleAddComment = async (postId) => {
+            const input = document.getElementById(`comment-${postId}`);
+            const content = input && input.value.trim();
+            if (!state.user || !content) return;
             try {
                 await addDoc(collection(db, 'posts', postId, 'comments'), {
                     authorId: state.user.uid,
                     authorName: state.user.displayName || 'User',
                     authorAvatar: state.user.photoURL || '',
-                    content: content.trim(),
+                    content,
                     createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp()
                 });
                 await updateDoc(doc(db, 'posts', postId), { commentsCount: increment(1) });
-                showNotification('Comment added');
-                const input = document.getElementById(`comment-${postId}`); if (input) input.value = '';
-                return true;
-            } catch (err) { console.error(err); showNotification('Failed to add comment'); return false; }
+                showNotification('Comment added!');
+                if (input) input.value = '';
+            } catch (error) {
+                console.error('Error adding comment:', error);
+                showNotification('Failed to add comment');
+            }
         };
 
-        // ---------- Chat ----------
-        const sendMessage = async (content, roomId = 'general') => {
-            if (!state.user || !content.trim()) return false;
+        window.handleCommentKeyPress = (event, postId) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                window.handleAddComment(postId);
+            }
+        };
+
+        window.sendMessage = async () => {
+            const input = document.getElementById('messageInput');
+            const content = input && input.value.trim();
+            if (!state.user || !content) return;
             try {
-                await addDoc(collection(db, 'chats', roomId, 'messages'), {
+                await addDoc(collection(db, 'chats', state.currentChatRoom, 'messages'), {
                     senderId: state.user.uid,
                     senderName: state.user.displayName || 'User',
                     senderAvatar: state.user.photoURL || '',
-                    content: content.trim(),
-                    roomId,
+                    content,
+                    roomId: state.currentChatRoom,
                     replyTo: state.replyTo || null,
                     timestamp: serverTimestamp(),
                     readBy: { [state.user.uid]: true },
-                    editedAt: null
                 });
                 state.replyTo = null;
-                const messageInput = document.getElementById('messageInput'); if (messageInput) messageInput.value = '';
+                if (input) input.value = '';
                 render();
-                setTimeout(()=>{ const mc = document.getElementById('messagesContainer'); if(mc) mc.scrollTop = mc.scrollHeight; }, 100);
-                return true;
-            } catch (err) { console.error(err); showNotification('Failed to send'); return false; }
+                setTimeout(() => {
+                    const container = document.getElementById('messagesContainer');
+                    if (container) container.scrollTop = container.scrollHeight;
+                }, 100);
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showNotification('Failed to send message');
+            }
         };
 
-        const setReplyTo = (message) => {
-            state.replyTo = { id: message.id, content: message.content, senderName: message.senderName };
+        window.setReplyTo = (messageId, content, senderName) => {
+            state.replyTo = { id: messageId, content, senderName };
             render();
-            const mi = document.getElementById('messageInput'); if (mi) mi.focus();
-        };
-        const clearReply = ()=>{ state.replyTo = null; render(); };
-
-        // ---------- Real-time listeners ----------
-        const setupPostsListener = () => {
-            const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
-            const unsub = onSnapshot(q, (snapshot) => {
-                state.posts = snapshot.docs.map(d=>({ id: d.id, ...d.data() }));
-                state.posts.forEach(p => {
-                    setupPostReactionsListener(p.id);
-                    setupPostCommentsListener(p.id);
-                });
-                if (state.currentRoute === 'feed') render();
-            }, (err)=>{ console.error('posts listener err',err); });
-            state.unsubscribers.push(unsub);
+            const input = document.getElementById('messageInput');
+            if (input) input.focus();
         };
 
-        const setupPostReactionsListener = (postId) => {
-            const q = query(collection(db,'posts',postId,'reactions'));
-            const unsub = onSnapshot(q, (snapshot)=>{
-                const reactions = {};
-                let userReaction = null;
-                snapshot.docs.forEach(docu=>{
-                    const rx = docu.data();
-                    reactions[rx.type] = (reactions[rx.type]||0) + 1;
-                    if (docu.id === state.user?.uid) userReaction = rx.type;
-                });
-                state.postReactions[postId] = { reactions, userReaction };
-                if (state.currentRoute === 'feed') render();
-            });
-            state.unsubscribers.push(unsub);
+        window.clearReply = () => {
+            state.replyTo = null;
+            render();
         };
 
-        const setupPostCommentsListener = (postId) => {
-            const q = query(collection(db,'posts',postId,'comments'), orderBy('createdAt','asc'));
-            const unsub = onSnapshot(q, (snapshot)=>{
-                state.postComments[postId] = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
-                if (state.currentRoute === 'feed') render();
-            });
-            state.unsubscribers.push(unsub);
+        window.updateProfile = async () => {
+            const name = document.getElementById('profileName')?.value;
+            const bio = document.getElementById('profileBio')?.value;
+            if (!state.user) return;
+            try {
+                const userRef = doc(db, 'users', state.user.uid);
+                await updateDoc(userRef, { name, bio });
+                state.userProfile = { ...state.userProfile, name, bio };
+                showNotification('Profile updated successfully! ✔️');
+                render();
+            } catch (error) {
+                console.error('Error updating profile:', error);
+                showNotification('Failed to update profile');
+            }
         };
 
-        const setupChatListener = () => {
-            const q = query(collection(db,'chats', state.currentChatRoom, 'messages'), orderBy('timestamp','asc'), limit(200));
-            const unsub = onSnapshot(q, (snapshot)=>{
-                state.chatMessages = snapshot.docs.map(d=>({ id:d.id, ...d.data() }));
-                if (state.currentRoute === 'chat') {
-                    render();
-                    setTimeout(()=>{ const mc = document.getElementById('messagesContainer'); if(mc) mc.scrollTop = mc.scrollHeight; },100);
-                }
-            });
-            state.unsubscribers.push(unsub);
-        };
-
-        const teardownListeners = () => {
-            state.unsubscribers.forEach(u => u && typeof u === 'function' && u());
-            state.unsubscribers = [];
-        };
-
-        // ---------- Navigation & render ----------
-        const navigate = (route) => {
+        window.navigate = (route) => {
             state.currentRoute = route;
-            window.history.pushState({}, '', `#${route}`);
-            if (route === 'chat' && state.user) setupChatListener();
+            if (route === 'chat' && state.user) {
+                setupChatListener();
+            }
+            if (route === 'profile' && state.user) {
+                loadUserProfile();
+            }
             render();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         };
 
-        // ---------- Helper DOM event handlers referenced from templates ----------
-        window.handleAuthSubmit = (e) => {
-            e.preventDefault();
-            const action = e.submitter?.value || (new FormData(e.target)).get('action');
-            const displayName = document.getElementById('displayName')?.value || '';
-            const email = document.getElementById('email')?.value || '';
-            const password = document.getElementById('password')?.value || '';
-            if (action === 'signup') handleEmailAuth(email, password, true, displayName);
-            else handleEmailAuth(email, password, false);
+        // ---------- Realtime listeners ----------
+        const setupPostsListener = () => {
+            const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(50));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                state.posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (state.currentRoute === 'feed') render();
+            }, (err) => console.error('posts listener error', err));
+            state.unsubscribers.push(unsubscribe);
         };
 
-        window.handleCreatePost = () => {
-            const text = document.getElementById('postText')?.value || '';
-            const fileEl = document.getElementById('postImage');
-            const file = fileEl && fileEl.files && fileEl.files[0] ? fileEl.files[0] : null;
-            createPost(text, file);
+        const setupChatListener = () => {
+            // Clean previous chat listener (if any)
+            state.unsubscribers = state.unsubscribers.filter(u => {
+                try { u && typeof u === 'function' && u(); } catch(e) {}
+                return false;
+            });
+
+            const q = query(collection(db, 'chats', state.currentChatRoom, 'messages'), orderBy('timestamp', 'asc'), limit(500));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                state.chatMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                if (state.currentRoute === 'chat') {
+                    render();
+                    setTimeout(() => {
+                        const container = document.getElementById('messagesContainer');
+                        if (container) container.scrollTop = container.scrollHeight;
+                    }, 100);
+                }
+            }, (err) => console.error('chat listener error', err));
+            state.unsubscribers.push(unsubscribe);
         };
 
-        window.handleAddComment = (postId) => {
-            const input = document.getElementById(`comment-${postId}`);
-            if (!input) return;
-            addComment(postId, input.value || '');
-        };
-
-        window.handleCommentKeyPress = (e, postId) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                addComment(postId, e.target.value || '');
+        const loadUserProfile = async () => {
+            if (!state.user) return;
+            try {
+                const userRef = doc(db, 'users', state.user.uid);
+                const userSnap = await getDoc(userRef);
+                if (userSnap.exists()) {
+                    state.userProfile = userSnap.data();
+                    render();
+                }
+            } catch (error) {
+                console.error('Error loading profile:', error);
             }
         };
 
-        window.deletePost = (postId) => {
-            if (!confirm('Delete this post?')) return;
-            const p = state.posts.find(x => x.id === postId);
-            deletePost(postId, p);
-        };
-
-        window.reportPost = (postId) => {
-            const reason = prompt('Why are you reporting this post? (optional)');
-            reportPost(postId, reason || '');
-        };
-
-        window.toggleReaction = (postId, emoji) => toggleReaction(postId, emoji);
-
-        window.sendMessageFromUI = () => {
-            const val = document.getElementById('messageInput')?.value || '';
-            sendMessage(val, state.currentChatRoom);
-        };
-
-        window.openProfile = (uid) => {
-            state.currentRoute = `profile:${uid}`;
-            render();
-        };
-
         // ---------- Render functions ----------
-        const renderNavbar = () => `
-            <nav class="glass p-4 mb-6">
-                <div class="max-w-6xl mx-auto flex items-center justify-between">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-black font-bold">GS</div>
-                        <div>
-                            <h1 class="text-xl font-bold">Glassy Social</h1>
-                            <p class="text-sm text-gray-400">Complete Social Platform</p>
+        const renderNavbar = () => {
+            if (!state.user) return '';
+            return `
+                <nav class="glass p-4 mb-6 sticky top-0 z-50">
+                    <div class="max-w-6xl mx-auto flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-black font-bold">GS</div>
+                            <div>
+                                <h1 class="text-xl font-bold">Glassy Social</h1>
+                                <p class="text-sm text-gray-400">Complete Social Platform</p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        ${state.user ? `
+                        <div class="flex items-center space-x-4">
                             <button onclick="navigate('feed')" class="btn ${state.currentRoute === 'feed' ? 'btn-primary' : 'btn-ghost'}">📱 Feed</button>
                             <button onclick="navigate('chat')" class="btn ${state.currentRoute === 'chat' ? 'btn-primary' : 'btn-ghost'}">💬 Chat</button>
-                            <button onclick="navigate('profile:${state.user.uid}')" class="btn ${state.currentRoute.startsWith('profile') ? 'btn-primary' : 'btn-ghost'}">👤 Profile</button>
+                            <button onclick="navigate('profile')" class="btn ${state.currentRoute === 'profile' ? 'btn-primary' : 'btn-ghost'}">👤 Profile</button>
+                            <img src="${state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user.displayName || 'User')}&background=1DB954&color=000`}" class="avatar" />
                             <button onclick="handleLogout()" class="btn btn-ghost">🚪 Logout</button>
-                        ` : `
-                            <button onclick="navigate('login')" class="btn btn-primary">🚀 Get Started</button>
-                        `}
+                        </div>
                     </div>
-                </div>
-            </nav>
-        `;
+                </nav>
+            `;
+        };
 
         const renderLogin = () => `
-            <div class="max-w-md mx-auto">
-                <div class="glass p-8">
+            <div class="min-h-screen flex items-center justify-center p-4">
+                <div class="glass p-8 w-full max-w-md">
                     <div class="text-center mb-6">
+                        <div class="w-16 h-16 rounded-xl bg-primary flex items-center justify-center text-black font-bold text-2xl mx-auto mb-4">GS</div>
                         <h2 class="text-2xl font-bold mb-2">Welcome to Glassy Social</h2>
                         <p class="text-gray-400">Connect, share, and chat with friends</p>
                     </div>
                     <div class="space-y-4">
-                        <button onclick="handleGoogleLogin()" class="btn btn-secondary w-full">🚀 Continue with Google</button>
+                        <button onclick="handleGoogleLogin()" class="btn btn-secondary w-full">
+                            ${state.isLoading ? '<span class="loader"></span>' : '🚀'} Continue with Google
+                        </button>
                         <div class="text-center text-gray-400">or</div>
-                        <form id="authForm" class="space-y-4" onsubmit="handleAuthSubmit(event)">
-                            <input id="displayName" type="text" placeholder="Display Name (for signup)" class="input">
-                            <input id="email" type="email" placeholder="Email" class="input" required>
-                            <input id="password" type="password" placeholder="Password" class="input" required>
+                        <form onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                            <input id="displayName" type="text" placeholder="Display Name (for signup)" class="input" />
+                            <input id="email" type="email" placeholder="Email" class="input" required />
+                            <input id="password" type="password" placeholder="Password" class="input" required />
                             <div class="flex gap-2">
-                                <button type="submit" name="action" value="login" class="btn btn-primary flex-1">Login</button>
-                                <button type="submit" name="action" value="signup" class="btn btn-ghost flex-1">Sign Up</button>
+                                <button type="submit" data-action="login" class="btn btn-primary flex-1">Login</button>
+                                <button type="submit" data-action="signup" class="btn btn-ghost flex-1" data-action="signup" data-action-type="signup" data-action="signup">Sign Up</button>
                             </div>
                         </form>
                     </div>
@@ -578,12 +620,14 @@
             return `
                 <div class="glass p-6 mb-6 max-w-2xl mx-auto">
                     <div class="flex items-start space-x-4">
-                        <img src="${state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user.displayName||'User')}&background=1DB954&color=000`}" class="w-12 h-12 rounded-full object-cover">
+                        <img src="${state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user.displayName || 'User')}&background=1DB954&color=000`}" class="avatar" />
                         <div class="flex-1">
-                            <textarea id="postText" placeholder="What's on your mind?" class="input resize-none w-full" rows="3"></textarea>
-                            <div class="flex items-center justify-between mt-4">
-                                <input id="postImage" type="file" accept="image/*" class="text-sm text-gray-400">
-                                <button onclick="handleCreatePost()" class="btn btn-primary">${state.isLoading ? '<span class="loader"></span>' : '📝 Post'}</button>
+                            <textarea id="postText" placeholder="What's on your mind?" class="textarea mb-4"></textarea>
+                            <div class="flex items-center justify-between">
+                                <input id="postImage" type="file" accept="image/*" class="text-sm text-gray-400" />
+                                <button onclick="handleCreatePost()" class="btn btn-primary">
+                                    ${state.isLoading ? '<span class="loader"></span>' : '📝'} Post
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -592,64 +636,43 @@
         };
 
         const renderPost = (post) => {
-            const reactionsObj = state.postReactions[post.id] || { reactions: {}, userReaction: null };
-            const comments = state.postComments[post.id] || [];
-            const emojis = ['👍','❤','😂','😮','😢'];
+            // Ensure safe values
+            const authorName = escapeHtml(post.authorName || 'User');
+            const text = escapeHtml(post.text || '');
+            const authorAvatar = post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName || 'User')}&background=1DB954&color=000`;
+            const imageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="mt-3 rounded-lg max-w-full h-auto" />` : '';
+            const isOwner = post.authorId === state.user?.uid;
+
             return `
                 <div class="glass p-6 mb-6 max-w-2xl mx-auto">
                     <div class="flex items-start space-x-4">
-                        <img src="${post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName||'User')}&background=1DB954&color=000`}" class="w-12 h-12 rounded-full object-cover">
+                        <img src="${authorAvatar}" class="avatar" />
                         <div class="flex-1">
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between mb-3">
                                 <div>
-                                    <h3 class="font-semibold cursor-pointer" onclick="openProfile('${post.authorId}')">${escapeHtml(post.authorName||'User')}</h3>
+                                    <h3 class="font-semibold text-white">${authorName}</h3>
                                     <p class="text-sm text-gray-400">${formatTime(post.createdAt)}</p>
                                 </div>
-                                <div>
-                                    ${post.authorId === state.user?.uid ? `<button onclick="deletePost('${post.id}')" class="text-red-400 hover:text-red-300">🗑️</button>` : `<button onclick="reportPost('${post.id}')" class="text-yellow-400 hover:text-yellow-300">⚠️</button>`}
+                                ${isOwner ? `<button onclick="deletePost('${post.id}')" class="text-red-400 hover:text-red-300">🗑️</button>` : `<button class="text-yellow-400 hover:text-yellow-300">⚠️</button>`}
+                            </div>
+                            <div class="mb-4">
+                                <p class="text-white whitespace-pre-wrap">${text}</p>
+                                ${imageHtml}
+                            </div>
+                            <div class="flex items-center space-x-4 pt-4 border-t border-white/10">
+                                <button onclick="toggleLike('${post.id}')" class="reaction-btn">❤️ <span>${post.reactionsCount || 0}</span></button>
+                                <button onclick="toggleComments('${post.id}')" class="reaction-btn">💬 <span>${post.commentsCount || 0}</span></button>
+                            </div>
+                            ${state.showComments[post.id] ? `
+                                <div class="mt-4 pt-4 border-t border-white/10">
+                                    <div class="flex items-center space-x-3">
+                                        <img src="${state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user.displayName || 'User')}&background=1DB954&color=000`}" class="w-8 h-8 rounded-full" />
+                                        <input id="comment-${post.id}" placeholder="Write a comment..." class="input flex-1" onkeypress="handleCommentKeyPress(event, '${post.id}')" />
+                                        <button onclick="handleAddComment('${post.id}')" class="btn btn-ghost">💬</button>
+                                    </div>
+                                    <div id="comments-list-${post.id}" class="mt-3 space-y-2"></div>
                                 </div>
-                            </div>
-
-                            <div class="mt-3">
-                                <p class="whitespace-pre-wrap">${escapeHtml(post.text || '')}</p>
-                                ${post.imageUrl ? `<img src="${post.imageUrl}" class="mt-3 rounded-lg max-w-full h-auto">` : ''}
-                            </div>
-
-                            <div class="flex items-center space-x-2 mt-4">
-                                ${emojis.map(emoji => `
-                                    <button onclick="toggleReaction('${post.id}','${emoji}')" class="reaction-btn ${reactionsObj.userReaction === emoji ? 'active' : ''}">
-                                        ${emoji} <span class="ml-1 text-sm">${reactionsObj.reactions[emoji] || 0}</span>
-                                    </button>
-                                `).join('')}
-                                <div class="text-sm text-gray-400 ml-3">${post.reactionsCount || 0} reactions • ${post.commentsCount || 0} comments</div>
-                            </div>
-
-                            <div class="mt-4 border-t border-gray-700 pt-4">
-                                <div class="space-y-3 max-h-48 overflow-y-auto">
-                                    ${comments.map(c => `
-                                        <div class="flex items-start space-x-3">
-                                            <img src="${c.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.authorName||'User')}&background=1DB954&color=000`}" class="w-8 h-8 rounded-full object-cover">
-                                            <div class="flex-1">
-                                                <div class="bg-gray-800 rounded-lg p-3">
-                                                    <div class="flex items-center justify-between">
-                                                        <div>
-                                                            <span class="font-semibold text-sm">${escapeHtml(c.authorName||'User')}</span>
-                                                            <span class="text-xs text-gray-400 ml-2">${formatTime(c.createdAt)}</span>
-                                                        </div>
-                                                    </div>
-                                                    <p class="text-sm mt-1">${escapeHtml(c.content||'')}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-
-                                <div class="flex items-center space-x-3 mt-3">
-                                    <img src="${state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user.displayName||'User')}&background=1DB954&color=000`}" class="w-8 h-8 rounded-full object-cover">
-                                    <input id="comment-${post.id}" placeholder="Write a comment..." class="input flex-1" onkeypress="handleCommentKeyPress(event,'${post.id}')">
-                                    <button onclick="handleAddComment('${post.id}')" class="btn btn-ghost">💬</button>
-                                </div>
-                            </div>
+                            ` : ''}
                         </div>
                     </div>
                 </div>
@@ -671,149 +694,181 @@
         `;
 
         const renderChat = () => {
-            if (!state.user) return `<div class="max-w-2xl mx-auto glass p-6 text-center">Please login to use chat</div>`;
-            return `
-                <div class="max-w-2xl mx-auto">
-                    <div class="glass p-4 mb-4">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-3">
-                                <h2 class="text-lg font-semibold">Chat — ${escapeHtml(state.currentChatRoom)}</h2>
-                                <div class="text-sm text-gray-400">${state.chatMessages.length} messages</div>
+            if (!state.user) {
+                return `<div class="max-w-2xl mx-auto glass p-6 text-center"><h3 class="text-lg font-semibold text-white">Please login to use chat</h3></div>`;
+            }
+
+            const messagesHtml = state.chatMessages.map(msg => {
+                const isOwn = msg.senderId === state.user.uid;
+                const replyMarkup = msg.replyTo ? `<div class="text-xs text-gray-300 mb-1 pl-2 border-l border-gray-600">↪ <strong>${escapeHtml(msg.replyTo.senderName || 'User')}</strong>: ${escapeHtml(msg.replyTo.content || '')}</div>` : '';
+                return `
+                    <div class="w-full flex ${isOwn ? 'justify-end' : 'justify-start'}">
+                        <div class="message ${isOwn ? 'own' : 'other'}">
+                            ${replyMarkup}
+                            <div class="flex items-center gap-2 mb-1">
+                                <img src="${msg.senderAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.senderName || 'User')}&background=1DB954&color=000`}" class="w-6 h-6 rounded-full" />
+                                <div class="text-xs text-gray-300">${escapeHtml(msg.senderName || 'User')}</div>
+                                <div class="text-xs text-gray-500 ml-2">${formatTime(msg.timestamp)}</div>
                             </div>
-                            <div>
-                                <button onclick="navigate('feed')" class="btn btn-ghost">Back to feed</button>
+                            <div class="text-sm">${escapeHtml(msg.content)}</div>
+                            <div class="mt-2 text-right">
+                                ${!isOwn ? `<button onclick="setReplyTo('${msg.id}', ${JSON.stringify(msg.content)}, ${JSON.stringify(msg.senderName)})" class="text-xs text-gray-300">Reply</button>` : ''}
                             </div>
-                        </div>
-                    </div>
-
-                    <div id="messagesContainer" class="glass p-4 mb-4 max-h-96 overflow-y-auto">
-                        ${state.chatMessages.map(m=>{
-                            const isOwn = m.senderId === state.user.uid;
-                            return `
-                                <div class="flex ${isOwn ? 'justify-end' : 'justify-start'} mb-4">
-                                    <div class="message ${isOwn ? 'own' : 'other'}">
-                                        ${m.replyTo ? `<div class="text-xs opacity-75">Replying to ${escapeHtml(m.replyTo.senderName||'User')}: ${escapeHtml(m.replyTo.content||'')}</div>` : ''}
-                                        <div class="text-sm font-semibold">${escapeHtml(m.senderName||'User')}</div>
-                                        <div class="mt-1">${escapeHtml(m.content||'')}</div>
-                                        <div class="text-xs text-gray-400 mt-2">${formatTime(m.timestamp)}</div>
-                                        ${!isOwn ? `<div class="mt-2"><button onclick='setReplyTo(${JSON.stringify({ id: m.id, content: m.content, senderName: m.senderName })})' class="btn btn-ghost btn-sm">Reply</button></div>` : ''}
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                    </div>
-
-                    <div class="glass p-4 flex items-start gap-3">
-                        ${state.replyTo ? `<div class="p-2 bg-gray-800 rounded w-full"><div class="text-xs">Replying to <strong>${escapeHtml(state.replyTo.senderName)}</strong>: ${escapeHtml(state.replyTo.content)}</div><div class="text-right"><button onclick="clearReply()" class="btn btn-ghost btn-sm">Clear</button></div></div>` : ''}
-                        <input id="messageInput" class="input flex-1" placeholder="Type a message..." />
-                        <button onclick="sendMessageFromUI()" class="btn btn-primary">Send</button>
-                    </div>
-                </div>
-            `;
-        };
-
-        const renderProfile = (uid) => {
-            // Simple profile view: if it's current user show own info; if another uid, try to fetch
-            let profileHtml = '';
-            if (!uid || uid === (state.user && state.user.uid)) {
-                profileHtml = `
-                    <div class="max-w-2xl mx-auto">
-                        <div class="glass p-6 mb-6">
-                            <div class="flex items-center gap-4">
-                                <img src="${state.user?.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(state.user?.displayName||'User')}&background=1DB954&color=000`}" class="w-20 h-20 rounded-full object-cover">
-                                <div>
-                                    <h2 class="text-xl font-semibold">${escapeHtml(state.user?.displayName || 'User')}</h2>
-                                    <p class="text-gray-400">${escapeHtml(state.user?.email || '')}</p>
-                                    <p class="mt-2 text-sm text-gray-300">This is your profile. More features (edit bio, follow, uploads) can be added.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="glass p-6">
-                            <h3 class="font-semibold mb-3">Your recent posts</h3>
-                            ${state.posts.filter(p=>p.authorId === state.user?.uid).map(renderPost).join('')}
                         </div>
                     </div>
                 `;
-            } else {
-                // fetch other user's profile synchronously (best-effort)
-                profileHtml = `<div class="max-w-2xl mx-auto glass p-6 text-center">Loading profile...</div>`;
-                (async () => {
-                    try {
-                        const uRef = doc(db, 'users', uid);
-                        const uSnap = await getDoc(uRef);
-                        if (uSnap.exists()) {
-                            const data = uSnap.data();
-                            state.currentRoute = `profile:${uid}`; // ensure route stable
-                            document.getElementById('app').innerHTML = renderNavbar() + `
-                                <main>
-                                    <div class="max-w-2xl mx-auto">
-                                        <div class="glass p-6 mb-6">
-                                            <div class="flex items-center gap-4">
-                                                <img src="${data.avatar}" class="w-20 h-20 rounded-full object-cover">
-                                                <div>
-                                                    <h2 class="text-xl font-semibold">${escapeHtml(data.name || 'User')}</h2>
-                                                    <p class="text-gray-400">${escapeHtml(data.email || '')}</p>
-                                                    <p class="mt-2 text-sm text-gray-300">${escapeHtml(data.bio || '')}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </main>
-                            `;
-                        } else {
-                            showNotification('User not found');
-                            navigate('feed');
-                        }
-                    } catch (e) {
-                        console.error(e);
-                        showNotification('Failed to load profile');
-                        navigate('feed');
-                    }
-                })();
-            }
-            return profileHtml;
-        };
-
-        const renderApp = () => {
-            const nav = renderNavbar();
-            let main = '';
-            if (!state.user && state.currentRoute === 'login') {
-                main = renderLogin();
-            } else if (!state.user && state.currentRoute !== 'login') {
-                main = `<div class="max-w-2xl mx-auto glass p-6 text-center"><h3 class="text-lg font-semibold">Please sign in to see the feed</h3><div class="mt-4"><button onclick="navigate('login')" class="btn btn-primary">Sign in / Sign up</button></div></div>`;
-            } else {
-                if (state.currentRoute === 'feed') main = renderFeed();
-                else if (state.currentRoute === 'chat') main = renderChat();
-                else if (state.currentRoute.startsWith('profile')) {
-                    const parts = state.currentRoute.split(':');
-                    const uid = parts[1] || state.user.uid;
-                    main = renderProfile(uid);
-                } else if (state.currentRoute === 'login') main = renderLogin();
-                else main = renderFeed();
-            }
+            }).join('');
 
             return `
-                <div class="max-w-6xl mx-auto">
-                    ${nav}
-                    <main>${main}</main>
+                <div class="max-w-4xl mx-auto">
+                    <div class="glass p-4 mb-4 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold">Chat — Room: ${escapeHtml(state.currentChatRoom)}</h3>
+                            <p class="text-sm text-gray-400">Real-time messages</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="navigate('feed')" class="btn btn-ghost">← Back to Feed</button>
+                        </div>
+                    </div>
+
+                    <div id="messagesContainer" class="glass p-4 mb-4 max-h-[60vh] overflow-y-auto" style="max-width:960px;margin:0 auto;">
+                        ${messagesHtml || '<div class="text-gray-400 text-center py-6">No messages yet. Start the conversation!</div>'}
+                    </div>
+
+                    <div class="glass p-4 max-w-4xl mx-auto">
+                        ${state.replyTo ? `<div class="mb-3 p-3 bg-white/5 rounded-md flex items-center justify-between"><div>Replying to <strong>${escapeHtml(state.replyTo.senderName)}</strong>: ${escapeHtml(state.replyTo.content)}</div><button onclick="clearReply()" class="btn btn-ghost">Clear</button></div>` : ''}
+                        <div class="flex gap-2">
+                            <input id="messageInput" class="input flex-1" placeholder="Write a message..." onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendMessage(); }" />
+                            <button onclick="sendMessage()" class="btn btn-primary">Send</button>
+                        </div>
+                    </div>
                 </div>
             `;
         };
 
+        const renderProfile = () => {
+            if (!state.user) {
+                return `<div class="max-w-2xl mx-auto glass p-6 text-center"><h3 class="text-lg font-semibold text-white">Please login to view your profile</h3></div>`;
+            }
+            const profile = state.userProfile || {};
+            return `
+                <div class="max-w-3xl mx-auto">
+                    <div class="glass p-6 mb-6 flex items-center gap-4">
+                        <img src="${profile.avatar || state.user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name || state.user.displayName || 'User')}&background=1DB954&color=000`}" class="w-20 h-20 rounded-full" />
+                        <div class="flex-1">
+                            <h2 class="text-2xl font-bold">${escapeHtml(profile.name || state.user.displayName || 'User')}</h2>
+                            <p class="text-gray-400">${escapeHtml(profile.bio || 'No bio yet')}</p>
+                            <p class="text-sm text-gray-400 mt-2">Joined: ${profile.createdAt ? formatTime(profile.createdAt) : 'Unknown'}</p>
+                        </div>
+                    </div>
+
+                    <div class="glass p-6 mb-6">
+                        <h3 class="font-semibold mb-3">Edit Profile</h3>
+                        <div class="space-y-3">
+                            <input id="profileName" class="input" placeholder="Display name" value="${escapeHtml(profile.name || state.user.displayName || '')}" />
+                            <textarea id="profileBio" class="textarea" placeholder="Short bio">${escapeHtml(profile.bio || '')}</textarea>
+                            <div class="flex gap-2">
+                                <button onclick="updateProfile()" class="btn btn-primary">Save</button>
+                                <button onclick="navigate('feed')" class="btn btn-ghost">Back</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass p-6">
+                        <h3 class="font-semibold mb-3">Your Posts</h3>
+                        <div class="space-y-4">
+                            ${state.posts.filter(p => p.authorId === state.user.uid).map(p => `
+                                <div class="p-4 border border-white/6 rounded-md">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="text-sm text-gray-300">${formatTime(p.createdAt)}</div>
+                                        <button onclick="deletePost('${p.id}')" class="text-red-400">Delete</button>
+                                    </div>
+                                    <div class="text-white">${escapeHtml(p.text)}</div>
+                                    ${p.imageUrl ? `<img src="${p.imageUrl}" class="mt-2 rounded-md max-w-full" />` : ''}
+                                </div>
+                            `).join('') || `<div class="text-gray-400">No posts yet.</div>`}
+                        </div>
+                    </div>
+                </div>
+            `;
+        };
+
+        const renderApp = () => {
+            const header = renderNavbar();
+            let content = '';
+            if (!state.user) {
+                content = renderLogin();
+            } else {
+                if (state.currentRoute === 'feed') content = renderFeed();
+                if (state.currentRoute === 'chat') content = renderChat();
+                if (state.currentRoute === 'profile') content = renderProfile();
+            }
+            return `${header}<main class="pb-16">${content}</main>`;
+        };
+
+        // Helper: populate comments lists after feed is rendered
+        const loadCommentsForVisiblePosts = async () => {
+            // For each post currently expanded, fetch recent comments
+            for (const postId of Object.keys(state.showComments)) {
+                if (!state.showComments[postId]) continue;
+                const container = document.getElementById(`comments-list-${postId}`);
+                if (!container) continue;
+                container.innerHTML = `<div class="text-gray-400 text-sm">Loading comments...</div>`;
+                try {
+                    const q = query(collection(db, 'posts', postId, 'comments'), orderBy('createdAt', 'asc'), limit(50));
+                    const snap = await getDocs(q);
+                    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    container.innerHTML = items.map(c => `
+                        <div class="flex items-start gap-3">
+                            <img src="${c.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.authorName || 'User')}&background=1DB954&color=000`}" class="w-8 h-8 rounded-full" />
+                            <div>
+                                <div class="text-sm"><strong>${escapeHtml(c.authorName || 'User')}</strong> <span class="text-xs text-gray-400">${formatTime(c.createdAt)}</span></div>
+                                <div class="text-sm text-gray-200">${escapeHtml(c.content)}</div>
+                            </div>
+                        </div>
+                    `).join('') || `<div class="text-gray-400 text-sm">No comments yet.</div>`;
+                } catch (e) {
+                    container.innerHTML = `<div class="text-red-400 text-sm">Failed to load comments</div>`;
+                }
+            }
+        };
+
+        // Main render wrapper
         const render = () => {
             document.getElementById('app').innerHTML = renderApp();
+            // After DOM inserted, load comments for expanded posts
+            loadCommentsForVisiblePosts();
         };
 
-        // initial render
-        render();
+        // ---------- Initialisation ----------
+        const init = async () => {
+            // Setup posts listener always
+            setupPostsListener();
 
-        // handle back/forward browser buttons
-        window.onpopstate = () => {
-            const hash = window.location.hash.replace('#','');
-            if (hash) state.currentRoute = hash;
+            // Auth state listener
+            onAuthStateChanged(auth, async (user) => {
+                state.user = user;
+                if (user) {
+                    await createUserProfile(user);
+                    loadUserProfile();
+                    // setup chat listener if in chat
+                    if (state.currentRoute === 'chat') setupChatListener();
+                } else {
+                    // remove unsubscribers
+                    state.unsubscribers.forEach(u => { try { u && typeof u === 'function' && u(); } catch(e) {} });
+                    state.unsubscribers = [];
+                }
+                render();
+            });
+
+            // initial render
             render();
         };
+
+        init();
+
+        // Expose state for debugging in dev console (optional)
+        window.__GS_STATE = state;
     </script>
 </body>
 </html>
