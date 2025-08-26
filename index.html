@@ -571,11 +571,16 @@
               </div>
 
               <div id="messages">${ msgsHtml || `<div class="p-6 text-center opacity-70">No messages yet — say hi 👋</div>` }</div>
+               <div class="flex items-center space-x-2 p-2 border-t border-gray-700">
+  <input 
+    id="chat-input"
+    type="text"
+    placeholder="Type a message..."
+    class="flex-1 p-2 rounded-lg bg-gray-800 text-white outline-none"
+  />
+  <button id="send-btn" class="px-4 py-2 bg-blue-600 rounded-lg">Send</button>
+</div>
 
-              <form class="message-form" id="messageForm" onsubmit="event.preventDefault(); (async()=>{ const el=document.getElementById('chatInput'); if(!el) return; await sendChat(el.value); el.value=''; })();">
-                <input id="chatInput" autocomplete="off" placeholder="${ state.user ? 'Type a message...' : 'Login to send messages' }" ${ state.user ? '' : 'disabled' } />
-                <button type="submit" class="btn btn-primary" ${ state.user ? '' : 'disabled' }>Send</button>
-              </form>
             </div>
           </div>
         </main>
